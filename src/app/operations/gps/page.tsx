@@ -3,34 +3,20 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/ui/status-badge";
 import {
-  Navigation,
   Radio,
   Search,
-  MapPin,
-  Car,
-  Compass,
-  Gauge,
-  BatteryCharging,
-  Zap,
-  ExternalLink,
-  ChevronRight,
-  ChevronDown,
   Building2,
   Layers,
-  Filter,
   CheckSquare,
   Square,
-  Sparkles,
-  ShieldCheck,
+  ChevronRight,
+  ChevronDown,
+  X,
   RotateCcw,
 } from "lucide-react";
-import { mockGPSTelemetry, mockVehicles, getGPSTelemetryList, getVehicles } from "@/lib/data";
-import { formatNumber } from "@/lib/utils";
+import { getGPSTelemetryList, getVehicles } from "@/lib/data";
 
 // Dynamically import Leaflet Map Component with SSR disabled
 const GPSMapView = dynamic(
@@ -62,28 +48,35 @@ export default function LiveGPSPage() {
       const gpsList = await getGPSTelemetryList();
 
       const combined = allVehicles.map((veh) => {
-        const gps = gpsList.find((g) => g.vehicleId === veh.id || g.plateNumber === veh.plateNumber);
+        const gps = gpsList.find(
+          (g) => g.vehicleId === veh.id || g.plateNumber === veh.plateNumber
+        );
 
-        // Assign mock coordinates in Jabodetabek area for any unit without active GPS
-        const lat = veh.latitude || gps?.latitude || -6.2088 + (Math.random() - 0.5) * 0.15;
-        const lng = veh.longitude || gps?.longitude || 106.8456 + (Math.random() - 0.5) * 0.15;
+        // Jabodetabek baseline coordinates
+        const lat = veh.latitude || gps?.latitude || -6.2088 + (Math.random() - 0.5) * 0.12;
+        const lng = veh.longitude || gps?.longitude || 106.8456 + (Math.random() - 0.5) * 0.12;
 
         const isMoving = veh.status === "RENTED" && (veh.speed || (gps?.speed ?? 0)) > 0;
         const isIdle = veh.status === "AVAILABLE" || veh.status === "RESERVED" || (veh.speed === 0);
-        const isOff = veh.status === "MAINTENANCE" || veh.status === "DOCUMENT_HOLD" || veh.status === "INACTIVE";
+        const isOff =
+          veh.status === "MAINTENANCE" ||
+          veh.status === "DOCUMENT_HOLD" ||
+          veh.status === "INACTIVE";
 
         return {
           vehicleId: veh.id,
           plateNumber: veh.plateNumber,
           model: `${veh.brand} ${veh.model}`,
           brand: veh.brand,
-          customerName: veh.currentCustomerName || (veh.businessEligibility === "B2C" ? "Retail B2C Pool" : "Tersedia di Pool"),
+          customerName:
+            veh.currentCustomerName ||
+            (veh.businessEligibility === "B2C" ? "Retail B2C Pool" : "Standby di Pool Jaja"),
           businessType: veh.businessEligibility,
           status: isOff ? "OFFLINE" : "ONLINE",
           rentalStatus: veh.status,
           latitude: lat,
           longitude: lng,
-          speed: isMoving ? (veh.speed || gps?.speed || 45) : 0,
+          speed: isMoving ? veh.speed || gps?.speed || 42 : 0,
           heading: "North-East",
           odometer: veh.odometer,
           batteryLevel: 96,
@@ -91,17 +84,19 @@ export default function LiveGPSPage() {
           lastUpdate: "3s ago",
           address: veh.locationArea || "Jakarta",
           city: veh.locationCity || "Jakarta",
-          ownership: veh.ownership === "JAJA_OWNED" ? "PT Jaja Rent Indonesia" : (veh.vendorName || "Mitra Vendor"),
+          ownership:
+            veh.ownership === "JAJA_OWNED"
+              ? "PT Jaja Rent Indonesia"
+              : veh.vendorName || "Mitra Vendor",
           ownershipType: veh.ownership,
           driverName: veh.currentDriverName,
         };
       });
 
       setVehicles(combined);
-      setVisibleVehicleIds(new Set(combined.map((v) => v.vehicleId)));
-      if (combined.length > 0) {
-        setSelectedVehicleId((prev) => prev || combined[0].vehicleId);
-      }
+      // All vehicles are unchecked initially by default
+      setVisibleVehicleIds(new Set());
+      setSelectedVehicleId(null);
     }
 
     loadVehicles();
@@ -115,12 +110,15 @@ export default function LiveGPSPage() {
         v.plateNumber.toLowerCase().includes(s) ||
         v.model.toLowerCase().includes(s) ||
         v.customerName.toLowerCase().includes(s) ||
-        v.ownership.toLowerCase().includes(s) ||
-        v.city.toLowerCase().includes(s);
+        v.ownership.toLowerCase().includes(s);
 
       const isMoving = v.speed > 0 && v.ignition === "ON";
       const isIdle = (v.speed === 0 && v.ignition === "ON") || v.rentalStatus === "AVAILABLE";
-      const isOff = v.ignition === "OFF" || v.status === "OFFLINE" || v.rentalStatus === "MAINTENANCE" || v.rentalStatus === "DOCUMENT_HOLD";
+      const isOff =
+        v.ignition === "OFF" ||
+        v.status === "OFFLINE" ||
+        (v.rentalStatus as string) === "MAINTENANCE" ||
+        (v.rentalStatus as string) === "DOCUMENT_HOLD";
 
       let matchesStatus = true;
       if (statusFilter === "MOVING") matchesStatus = isMoving;
@@ -191,35 +189,38 @@ export default function LiveGPSPage() {
     setVisibleVehicleIds(new Set());
   };
 
-  const activeVehicle = vehicles.find((v) => v.vehicleId === selectedVehicleId) || vehicles[0];
+  const activeVehicle =
+    vehicles.find((v) => v.vehicleId === selectedVehicleId) || vehicles[0];
 
   const totalMoving = vehicles.filter((v) => v.speed > 0 && v.ignition === "ON").length;
-  const totalIdle = vehicles.filter((v) => (v.speed === 0 && v.ignition === "ON") || v.rentalStatus === "AVAILABLE").length;
-  const totalOff = vehicles.filter((v) => v.ignition === "OFF" || v.rentalStatus === "MAINTENANCE" || v.rentalStatus === "DOCUMENT_HOLD").length;
+  const totalIdle = vehicles.filter(
+    (v) => (v.speed === 0 && v.ignition === "ON") || v.rentalStatus === "AVAILABLE"
+  ).length;
+  const totalOff = vehicles.filter(
+    (v) =>
+      v.ignition === "OFF" ||
+      v.rentalStatus === "MAINTENANCE" ||
+      v.rentalStatus === "DOCUMENT_HOLD"
+  ).length;
 
   return (
     <div className="flex flex-col h-[calc(100vh-65px)] w-full overflow-hidden bg-neutral-50">
       {/* Top Controls Bar */}
-      <div className="bg-white border-b border-neutral-200/80 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
+      <div className="bg-white border-b border-neutral-200/80 px-4 py-2 flex items-center justify-between gap-3 shrink-0 z-10 shadow-xs">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-md bg-emerald-50 text-emerald-700">
             <Radio className="h-4 w-4 animate-pulse" />
           </div>
-          <div>
-            <h1 className="text-base font-bold text-neutral-900 leading-none">
-              Live Fleet GPS Tracking
-            </h1>
-            <span className="text-[11px] text-neutral-500 font-medium">
-              Memantau {vehicles.length} unit secara real-time &middot; {visibleVehicleIds.size} unit aktif di peta
-            </span>
-          </div>
+          <h1 className="text-base font-bold text-neutral-900 leading-none">
+            Live Fleet GPS Tracking
+          </h1>
         </div>
 
-        {/* Status Counts Strip */}
-        <div className="flex items-center gap-2 text-xs">
+        {/* Status Filter Buttons */}
+        <div className="flex items-center gap-1.5 text-xs">
           <button
             onClick={() => setStatusFilter("ALL")}
-            className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
               statusFilter === "ALL"
                 ? "bg-neutral-900 text-white"
                 : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
@@ -229,7 +230,7 @@ export default function LiveGPSPage() {
           </button>
           <button
             onClick={() => setStatusFilter("MOVING")}
-            className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+            className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               statusFilter === "MOVING"
                 ? "bg-emerald-600 text-white"
                 : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60"
@@ -240,7 +241,7 @@ export default function LiveGPSPage() {
           </button>
           <button
             onClick={() => setStatusFilter("IDLE")}
-            className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+            className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               statusFilter === "IDLE"
                 ? "bg-blue-600 text-white"
                 : "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/60"
@@ -251,7 +252,7 @@ export default function LiveGPSPage() {
           </button>
           <button
             onClick={() => setStatusFilter("OFF")}
-            className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
+            className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               statusFilter === "OFF"
                 ? "bg-rose-600 text-white"
                 : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/60"
@@ -263,97 +264,87 @@ export default function LiveGPSPage() {
         </div>
       </div>
 
-      {/* Main Split View: Left Selector Panel + Right Leaflet Map */}
+      {/* Main Split View: Left Control Panel + Right Leaflet Map Canvas */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Left Control & Grouped Checklist Panel */}
-        <div className="w-full md:w-80 lg:w-96 bg-white border-r border-neutral-200 flex flex-col shrink-0 h-full overflow-hidden z-10 shadow-sm">
-          {/* Panel Search & Group Switcher */}
-          <div className="p-3 border-b border-neutral-200 space-y-2.5 bg-neutral-50/50">
-            {/* Search */}
+        <div className="w-full md:w-84 lg:w-96 bg-white border-r border-neutral-200 flex flex-col shrink-0 h-full overflow-hidden z-10 shadow-sm">
+          {/* Streamlined Compact Control Header */}
+          <div className="p-2.5 border-b border-neutral-200 space-y-2 bg-neutral-50/80">
+            {/* Row 1: Search Form */}
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-neutral-400" />
               <Input
-                placeholder="Cari plat, model, klien, vendor..."
+                placeholder="Cari plat nomor, model, nama klien..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-8 text-xs bg-white"
+                className="pl-8 pr-7 h-8 text-xs bg-white"
               />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-2.5 text-neutral-400 hover:text-neutral-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Group Switcher Tabs */}
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
-                Kelompokkan:
-              </span>
-              <div className="flex rounded-md bg-neutral-200/70 p-0.5 text-xs font-semibold">
-                <button
-                  onClick={() => setGroupBy("company")}
-                  className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${
-                    groupBy === "company"
-                      ? "bg-white text-neutral-900 shadow-xs"
-                      : "text-neutral-600 hover:text-neutral-900"
-                  }`}
+            {/* Row 2: Unified Grouping Dropdown & Selection Buttons */}
+            <div className="flex items-center justify-between gap-1.5 text-xs">
+              {/* Grouping Dropdown */}
+              <div className="flex items-center gap-1">
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as any)}
+                  className="h-7 rounded-md border border-neutral-200 bg-white px-2 py-0.5 text-xs font-semibold text-neutral-800 focus:outline-none focus:ring-1 focus:ring-neutral-900 cursor-pointer shadow-2xs"
                 >
-                  <Building2 className="h-3 w-3" />
-                  Perusahaan
-                </button>
-                <button
-                  onClick={() => setGroupBy("owner")}
-                  className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${
-                    groupBy === "owner"
-                      ? "bg-white text-neutral-900 shadow-xs"
-                      : "text-neutral-600 hover:text-neutral-900"
-                  }`}
-                >
-                  <Layers className="h-3 w-3" />
-                  Pemilik / Vendor
-                </button>
+                  <option value="company">Group: Perusahaan (Klien)</option>
+                  <option value="owner">Group: Pemilik (Vendor / Jaja)</option>
+                </select>
               </div>
-            </div>
 
-            {/* Bulk Selection Actions */}
-            <div className="flex items-center justify-between text-xs pt-1 border-t border-neutral-200/60">
-              <span className="text-neutral-500 text-[11px]">
-                Centang untuk tampil di peta
-              </span>
-              <div className="flex items-center gap-2">
+              {/* Compact Select / Clear Buttons */}
+              <div className="flex items-center gap-1">
                 <button
                   onClick={selectAll}
-                  className="text-primary hover:underline font-bold text-[11px]"
+                  className="h-7 px-2 bg-white hover:bg-neutral-100 text-neutral-800 border border-neutral-200 rounded-md font-semibold text-[11px] transition-all cursor-pointer shadow-2xs"
+                  title="Centang semua unit"
                 >
                   Centang Semua
                 </button>
-                <span className="text-neutral-300">&middot;</span>
                 <button
                   onClick={clearAll}
-                  className="text-neutral-500 hover:text-neutral-900 text-[11px]"
+                  className="h-7 px-2 bg-white hover:bg-neutral-100 text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-md font-medium text-[11px] transition-all cursor-pointer shadow-2xs"
+                  title="Hapus semua centang"
                 >
-                  Hapus Semua
+                  Hapus
                 </button>
               </div>
             </div>
           </div>
 
           {/* Grouped Vehicle List */}
-          <div className="flex-1 overflow-y-auto divide-y divide-neutral-100 p-1">
+          <div className="flex-1 overflow-y-auto divide-y divide-neutral-100 p-2 space-y-1">
             {Object.keys(groupedVehicles).length === 0 ? (
               <div className="p-8 text-center text-neutral-400 text-xs">
                 Tidak ada kendaraan yang sesuai filter.
               </div>
             ) : (
               Object.entries(groupedVehicles).map(([groupName, groupUnits]) => {
-                const groupCheckedCount = groupUnits.filter((u) => visibleVehicleIds.has(u.vehicleId)).length;
+                const groupCheckedCount = groupUnits.filter((u) =>
+                  visibleVehicleIds.has(u.vehicleId)
+                ).length;
                 const isGroupAllChecked = groupCheckedCount === groupUnits.length;
                 const isGroupCollapsed = collapsedGroups[groupName];
 
                 return (
                   <div key={groupName} className="py-1">
                     {/* Group Header */}
-                    <div className="flex items-center justify-between px-2.5 py-1.5 bg-neutral-100/70 hover:bg-neutral-100 rounded-md transition-colors">
+                    <div className="flex items-center justify-between px-2 py-1.5 bg-neutral-100/90 hover:bg-neutral-200/80 rounded-md transition-colors">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <button
                           onClick={() => toggleGroupVisibility(groupUnits)}
-                          className="text-neutral-600 hover:text-neutral-900"
+                          className="text-neutral-600 hover:text-neutral-900 cursor-pointer"
                           title="Centang/Hapus grup ini"
                         >
                           {isGroupAllChecked ? (
@@ -374,7 +365,7 @@ export default function LiveGPSPage() {
                               [groupName]: !prev[groupName],
                             }))
                           }
-                          className="flex items-center gap-1.5 font-bold text-xs text-neutral-900 truncate text-left flex-1"
+                          className="flex items-center gap-1.5 font-bold text-xs text-neutral-900 truncate text-left flex-1 cursor-pointer"
                         >
                           {groupBy === "company" ? (
                             <Building2 className="h-3.5 w-3.5 text-purple-600 shrink-0" />
@@ -382,7 +373,7 @@ export default function LiveGPSPage() {
                             <Layers className="h-3.5 w-3.5 text-blue-600 shrink-0" />
                           )}
                           <span className="truncate">{groupName}</span>
-                          <span className="text-[10px] text-neutral-500 font-normal ml-1 shrink-0">
+                          <span className="text-[10px] text-neutral-500 font-semibold ml-1 shrink-0">
                             ({groupCheckedCount}/{groupUnits.length})
                           </span>
                         </button>
@@ -395,7 +386,7 @@ export default function LiveGPSPage() {
                             [groupName]: !prev[groupName],
                           }))
                         }
-                        className="text-neutral-400 hover:text-neutral-700 p-0.5"
+                        className="text-neutral-400 hover:text-neutral-700 p-0.5 cursor-pointer"
                       >
                         {isGroupCollapsed ? (
                           <ChevronRight className="h-3.5 w-3.5" />
@@ -405,15 +396,16 @@ export default function LiveGPSPage() {
                       </button>
                     </div>
 
-                    {/* Group Items */}
+                    {/* Indented Group Items Hierarchy */}
                     {!isGroupCollapsed && (
-                      <div className="space-y-0.5 mt-1 pl-1">
+                      <div className="ml-3 pl-3.5 border-l-2 border-neutral-200/90 py-1 space-y-1 mt-1">
                         {groupUnits.map((v) => {
                           const isChecked = visibleVehicleIds.has(v.vehicleId);
                           const isSelected = selectedVehicleId === v.vehicleId;
                           const isMoving = v.speed > 0 && v.ignition === "ON";
-                          const isIdle = (v.speed === 0 && v.ignition === "ON") || v.rentalStatus === "AVAILABLE";
-                          const isOff = v.ignition === "OFF" || v.rentalStatus === "MAINTENANCE" || v.rentalStatus === "DOCUMENT_HOLD";
+                          const isIdle =
+                            (v.speed === 0 && v.ignition === "ON") ||
+                            v.rentalStatus === "AVAILABLE";
 
                           return (
                             <div
@@ -426,8 +418,8 @@ export default function LiveGPSPage() {
                               }}
                               className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all ${
                                 isSelected
-                                  ? "bg-primary/10 border-l-3 border-primary"
-                                  : "hover:bg-neutral-50"
+                                  ? "bg-primary/10 border border-primary/20 shadow-2xs"
+                                  : "hover:bg-neutral-100/70 border border-transparent"
                               }`}
                             >
                               <button
@@ -435,7 +427,7 @@ export default function LiveGPSPage() {
                                   e.stopPropagation();
                                   toggleVehicleVisibility(v.vehicleId);
                                 }}
-                                className="text-neutral-500 hover:text-neutral-900 shrink-0"
+                                className="text-neutral-500 hover:text-neutral-900 shrink-0 cursor-pointer"
                               >
                                 {isChecked ? (
                                   <CheckSquare className="h-3.5 w-3.5 text-primary" />
@@ -455,14 +447,14 @@ export default function LiveGPSPage() {
                                 }`}
                               />
 
-                              {/* Info */}
+                              {/* Info: Plate, Speed Badge, Model */}
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between gap-1">
                                   <span className="font-bold text-xs text-neutral-900 tracking-tight">
                                     {v.plateNumber}
                                   </span>
                                   {isMoving ? (
-                                    <span className="font-mono text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded">
+                                    <span className="font-mono text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200/50 px-1 py-0.2 rounded">
                                       {v.speed} km/h
                                     </span>
                                   ) : (
@@ -471,11 +463,8 @@ export default function LiveGPSPage() {
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-neutral-500 truncate flex items-center justify-between">
-                                  <span className="truncate">{v.model}</span>
-                                  <span className="text-[10px] text-neutral-400 shrink-0 ml-1">
-                                    {v.city}
-                                  </span>
+                                <div className="text-[11px] text-neutral-500 truncate">
+                                  {v.model}
                                 </div>
                               </div>
                             </div>
@@ -489,7 +478,7 @@ export default function LiveGPSPage() {
             )}
           </div>
 
-          {/* Active Selected Vehicle Bottom Quick-Info Bar */}
+          {/* Active Selected Vehicle Bottom Summary Bar */}
           {activeVehicle && (
             <div className="p-3 bg-neutral-900 text-white border-t border-neutral-800 shrink-0 text-xs">
               <div className="flex items-center justify-between pb-1.5 border-b border-neutral-800">
@@ -507,20 +496,29 @@ export default function LiveGPSPage() {
 
               <div className="grid grid-cols-2 gap-2 pt-2 text-[11px] text-neutral-300">
                 <div>
-                  <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Speed / Kontak:</span>
-                  <span className="font-mono font-bold text-white">{activeVehicle.speed} km/h</span> &middot; {activeVehicle.ignition}
+                  <span className="text-neutral-500 block text-[10px] uppercase font-semibold">
+                    Speed / Kontak:
+                  </span>
+                  <span className="font-mono font-bold text-white">
+                    {activeVehicle.speed} km/h
+                  </span>{" "}
+                  &middot; {activeVehicle.ignition}
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Pengguna:</span>
-                  <span className="font-semibold text-white truncate block">{activeVehicle.customerName}</span>
+                  <span className="text-neutral-500 block text-[10px] uppercase font-semibold">
+                    Pengguna:
+                  </span>
+                  <span className="font-semibold text-white truncate block">
+                    {activeVehicle.customerName}
+                  </span>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Right Map Canvas Area */}
-        <div className="flex-1 h-full w-full relative">
+        {/* Right Leaflet Map Area */}
+        <div className="flex-1 h-full w-full relative flex flex-col">
           <GPSMapView
             vehicles={vehicles}
             visibleVehicleIds={visibleVehicleIds}
