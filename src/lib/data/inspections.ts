@@ -1,7 +1,82 @@
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { mockInspections } from "@/lib/mock-data/inspections";
+import { mockDigitalInspections } from "@/lib/mock-data/digital-inspections";
 import { InspectionRecord } from "@/lib/types/operations";
+import { DigitalInspectionRecord } from "@/lib/types/inspection";
 
+// In-memory / LocalStorage cache for digital inspections
+let cachedDigitalInspections: DigitalInspectionRecord[] = [...mockDigitalInspections];
+
+export async function getDigitalInspections(vehicleId?: string): Promise<DigitalInspectionRecord[]> {
+  // Check browser localStorage if available
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("jaja_digital_inspections");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedDigitalInspections = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not read local inspections storage", e);
+    }
+  }
+
+  if (vehicleId) {
+    return cachedDigitalInspections.filter(
+      (i) => i.vehicleId === vehicleId || i.vehicleSpecs.plateNumber === vehicleId
+    );
+  }
+
+  return cachedDigitalInspections;
+}
+
+export async function getDigitalInspectionById(id: string): Promise<DigitalInspectionRecord | null> {
+  const all = await getDigitalInspections();
+  return all.find((i) => i.id === id) || null;
+}
+
+export async function saveDigitalInspection(
+  record: DigitalInspectionRecord
+): Promise<{ success: boolean; data: DigitalInspectionRecord }> {
+  const existingIdx = cachedDigitalInspections.findIndex((i) => i.id === record.id);
+
+  if (existingIdx >= 0) {
+    cachedDigitalInspections[existingIdx] = {
+      ...record,
+      updatedAt: new Date().toISOString(),
+    };
+  } else {
+    cachedDigitalInspections = [record, ...cachedDigitalInspections];
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("jaja_digital_inspections", JSON.stringify(cachedDigitalInspections));
+    } catch (e) {
+      console.warn("Could not save to local inspections storage", e);
+    }
+  }
+
+  return { success: true, data: record };
+}
+
+export async function deleteDigitalInspection(id: string): Promise<{ success: boolean }> {
+  cachedDigitalInspections = cachedDigitalInspections.filter((i) => i.id !== id);
+
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("jaja_digital_inspections", JSON.stringify(cachedDigitalInspections));
+    } catch (e) {
+      console.warn("Could not save to local inspections storage", e);
+    }
+  }
+
+  return { success: true };
+}
+
+// Backwards compatibility functions
 export async function getInspections(vehicleId?: string): Promise<InspectionRecord[]> {
   const supabase = getSupabaseBrowserClient();
 
@@ -84,4 +159,3 @@ export async function createInspection(
 
   return { success: true, data: record as InspectionRecord };
 }
-

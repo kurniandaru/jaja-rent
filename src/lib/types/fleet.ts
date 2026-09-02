@@ -36,6 +36,7 @@ export interface Vehicle {
   engineNumber: string;
   odometer: number;
   ownership: OwnershipType;
+  vendorId?: string;
   vendorName?: string; // If VENDOR_OWNED
   businessEligibility: BusinessEligibility;
   status: VehicleStatus;

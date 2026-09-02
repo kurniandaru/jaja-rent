@@ -17,6 +17,8 @@ export function formatRupiah(amount: number): string {
   return `Rp ${formatted}`;
 }
 
+export const formatCurrency = formatRupiah;
+
 /**
  * Deterministic number formatting with Indonesian thousand separator (dot)
  * e.g., 45210 -> "45.210"

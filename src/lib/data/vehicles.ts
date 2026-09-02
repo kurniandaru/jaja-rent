@@ -1,6 +1,11 @@
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { mockVehicles } from "@/lib/mock-data/vehicles";
-import { Vehicle, VehicleStatus, OwnershipType, BusinessEligibility } from "@/lib/types/fleet";
+import {
+  Vehicle,
+  VehicleStatus,
+  OwnershipType,
+  BusinessEligibility,
+} from "@/lib/types/fleet";
 
 export interface VehicleFilterParams {
   ownership?: string;
@@ -9,7 +14,9 @@ export interface VehicleFilterParams {
   eligibility?: string;
 }
 
-export async function getVehicles(params?: VehicleFilterParams): Promise<Vehicle[]> {
+export async function getVehicles(
+  params?: VehicleFilterParams,
+): Promise<Vehicle[]> {
   const supabase = getSupabaseBrowserClient();
 
   if (supabase) {
@@ -17,7 +24,8 @@ export async function getVehicles(params?: VehicleFilterParams): Promise<Vehicle
       let query = supabase.from("vehicle_operational_summary").select("*");
 
       if (params?.ownership && params.ownership !== "ALL") {
-        const ownershipEnum = params.ownership === "JAJA_OWNED" ? "JAJA" : "VENDOR";
+        const ownershipEnum =
+          params.ownership === "JAJA_OWNED" ? "JAJA" : "VENDOR";
         query = query.eq("ownership_type", ownershipEnum);
       }
 
@@ -39,15 +47,19 @@ export async function getVehicles(params?: VehicleFilterParams): Promise<Vehicle
           fuelType: (row.fuel_type as any) || "Bensin",
           seatCapacity: row.seat_capacity || 7,
           vin: row.vin || `VIN-${row.id.slice(0, 8).toUpperCase()}`,
-          engineNumber: row.engine_number || `ENG-${row.id.slice(0, 8).toUpperCase()}`,
+          engineNumber:
+            row.engine_number || `ENG-${row.id.slice(0, 8).toUpperCase()}`,
           odometer: row.current_odometer || 0,
-          ownership: (row.ownership_type === "JAJA" ? "JAJA_OWNED" : "VENDOR_OWNED") as OwnershipType,
+          ownership: (row.ownership_type === "JAJA"
+            ? "JAJA_OWNED"
+            : "VENDOR_OWNED") as OwnershipType,
           vendorName: row.vendor_name || undefined,
-          businessEligibility: (row.business_b2c_enabled && row.business_b2b_enabled
+          businessEligibility: (row.business_b2c_enabled &&
+          row.business_b2b_enabled
             ? "BOTH"
             : row.business_b2c_enabled
-            ? "B2C"
-            : "B2B") as BusinessEligibility,
+              ? "B2C"
+              : "B2B") as BusinessEligibility,
           status: row.status as VehicleStatus,
           lifecycleStage: "AVAILABLE",
           currentRentalId: row.current_rental_id || undefined,
@@ -63,13 +75,21 @@ export async function getVehicles(params?: VehicleFilterParams): Promise<Vehicle
           speed: row.status === "RENTED" ? 45 : 0,
           documentStatus: row.document_health || "OK",
           maintenanceStatus: row.maintenance_health || "OK",
-          nextServiceOdometer: row.next_service_odometer || (row.current_odometer + 5000),
-          dailyRateB2C: row.daily_rate_b2c ? Number(row.daily_rate_b2c) : undefined,
-          monthlyRateB2B: row.monthly_rate_b2b ? Number(row.monthly_rate_b2b) : undefined,
+          nextServiceOdometer:
+            row.next_service_odometer || row.current_odometer + 5000,
+          dailyRateB2C: row.daily_rate_b2c
+            ? Number(row.daily_rate_b2c)
+            : undefined,
+          monthlyRateB2B: row.monthly_rate_b2b
+            ? Number(row.monthly_rate_b2b)
+            : undefined,
         }));
       }
     } catch (err) {
-      console.warn("Supabase fetch failed in getVehicles, falling back to mock fixtures", err);
+      console.warn(
+        "Supabase fetch failed in getVehicles, falling back to mock fixtures",
+        err,
+      );
     }
   }
 
@@ -89,14 +109,17 @@ export async function getVehicles(params?: VehicleFilterParams): Promise<Vehicle
         v.plateNumber.toLowerCase().includes(s) ||
         v.brand.toLowerCase().includes(s) ||
         v.model.toLowerCase().includes(s) ||
-        (v.currentCustomerName && v.currentCustomerName.toLowerCase().includes(s))
+        (v.currentCustomerName &&
+          v.currentCustomerName.toLowerCase().includes(s)),
     );
   }
 
   return result;
 }
 
-export async function getVehicleById(idOrPlate: string): Promise<Vehicle | null> {
+export async function getVehicleById(
+  idOrPlate: string,
+): Promise<Vehicle | null> {
   const supabase = getSupabaseBrowserClient();
 
   if (supabase) {
@@ -104,7 +127,9 @@ export async function getVehicleById(idOrPlate: string): Promise<Vehicle | null>
       const { data, error } = await supabase
         .from("vehicle_operational_summary")
         .select("*")
-        .or(`id.eq.${idOrPlate},police_number.eq.${idOrPlate.replace(/-/g, " ")}`)
+        .or(
+          `id.eq.${idOrPlate},police_number.eq.${idOrPlate.replace(/-/g, " ")}`,
+        )
         .maybeSingle();
 
       if (!error && data) {
@@ -120,15 +145,19 @@ export async function getVehicleById(idOrPlate: string): Promise<Vehicle | null>
           fuelType: (row.fuel_type as any) || "Bensin",
           seatCapacity: row.seat_capacity || 7,
           vin: row.vin || `VIN-${row.id.slice(0, 8).toUpperCase()}`,
-          engineNumber: row.engine_number || `ENG-${row.id.slice(0, 8).toUpperCase()}`,
+          engineNumber:
+            row.engine_number || `ENG-${row.id.slice(0, 8).toUpperCase()}`,
           odometer: row.current_odometer || 0,
-          ownership: (row.ownership_type === "JAJA" ? "JAJA_OWNED" : "VENDOR_OWNED") as OwnershipType,
+          ownership: (row.ownership_type === "JAJA"
+            ? "JAJA_OWNED"
+            : "VENDOR_OWNED") as OwnershipType,
           vendorName: row.vendor_name || undefined,
-          businessEligibility: (row.business_b2c_enabled && row.business_b2b_enabled
+          businessEligibility: (row.business_b2c_enabled &&
+          row.business_b2b_enabled
             ? "BOTH"
             : row.business_b2c_enabled
-            ? "B2C"
-            : "B2B") as BusinessEligibility,
+              ? "B2C"
+              : "B2B") as BusinessEligibility,
           status: row.status as VehicleStatus,
           lifecycleStage: "AVAILABLE",
           currentRentalId: row.current_rental_id || undefined,
@@ -144,9 +173,14 @@ export async function getVehicleById(idOrPlate: string): Promise<Vehicle | null>
           speed: row.status === "RENTED" ? 45 : 0,
           documentStatus: row.document_health || "OK",
           maintenanceStatus: row.maintenance_health || "OK",
-          nextServiceOdometer: row.next_service_odometer || (row.current_odometer + 5000),
-          dailyRateB2C: row.daily_rate_b2c ? Number(row.daily_rate_b2c) : undefined,
-          monthlyRateB2B: row.monthly_rate_b2b ? Number(row.monthly_rate_b2b) : undefined,
+          nextServiceOdometer:
+            row.next_service_odometer || row.current_odometer + 5000,
+          dailyRateB2C: row.daily_rate_b2c
+            ? Number(row.daily_rate_b2c)
+            : undefined,
+          monthlyRateB2B: row.monthly_rate_b2b
+            ? Number(row.monthly_rate_b2b)
+            : undefined,
         };
       }
     } catch (err) {
@@ -158,8 +192,9 @@ export async function getVehicleById(idOrPlate: string): Promise<Vehicle | null>
   const found = mockVehicles.find(
     (v) =>
       v.id.toLowerCase() === idOrPlate.toLowerCase() ||
-      v.plateNumber.replace(/\s+/g, "-").toLowerCase() === idOrPlate.toLowerCase() ||
-      v.plateNumber.toLowerCase() === idOrPlate.toLowerCase()
+      v.plateNumber.replace(/\s+/g, "-").toLowerCase() ===
+        idOrPlate.toLowerCase() ||
+      v.plateNumber.toLowerCase() === idOrPlate.toLowerCase(),
   );
 
   return found || mockVehicles[0];
@@ -181,7 +216,10 @@ export async function getFleetSummary(): Promise<{
 
   if (supabase) {
     try {
-      const { data, error } = await supabase.from("fleet_summary").select("*").maybeSingle();
+      const { data, error } = await supabase
+        .from("fleet_summary")
+        .select("*")
+        .maybeSingle();
       if (!error && data) {
         const summary = data as any;
         return {
@@ -215,4 +253,3 @@ export async function getFleetSummary(): Promise<{
     vendorOwned: 40,
   };
 }
-

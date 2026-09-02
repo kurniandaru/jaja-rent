@@ -4,12 +4,7 @@ import * as React from "react";
 import { Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { OwnershipBadge } from "@/components/ui/priority-badge";
@@ -41,7 +36,13 @@ import {
   Gauge,
   Plus,
 } from "lucide-react";
-import { mockContracts, mockVehicles, getCorporateContractById, assignReplacementUnit } from "@/lib/data";
+import {
+  mockContracts,
+  mockVehicles,
+  getCorporateContractById,
+  assignReplacementUnit,
+} from "@/lib/data";
+import { ContractVehicleAllocation } from "@/lib/types/corporate";
 import { formatRupiah, formatDate, formatNumber } from "@/lib/utils";
 
 function ContractDetailContent() {
@@ -52,28 +53,37 @@ function ContractDetailContent() {
 
   // Initial contract state
   const baseContract =
-    mockContracts.find((c) => c.id === contractId || c.contractNumber === contractId) ||
-    mockContracts[0];
+    mockContracts.find(
+      (c) => c.id === contractId || c.contractNumber === contractId,
+    ) || mockContracts[0];
 
   const [contract, setContract] = React.useState(baseContract);
   const [isReplacementModalOpen, setIsReplacementModalOpen] = React.useState(
-    actionParam === "replacement"
+    actionParam === "replacement",
   );
-  const [selectedReplacementUnit, setSelectedReplacementUnit] = React.useState<string | null>(null);
+  const [selectedReplacementUnit, setSelectedReplacementUnit] = React.useState<
+    string | null
+  >(null);
   const [isSuccessToast, setIsSuccessToast] = React.useState(false);
 
   // Filter available candidate replacement units (Must be eligible for B2B)
   const availableCandidates = mockVehicles.filter(
-    (v) => v.status === "AVAILABLE" && (v.businessEligibility === "B2B" || v.businessEligibility === "BOTH")
+    (v) =>
+      v.status === "AVAILABLE" &&
+      (v.businessEligibility === "B2B" || v.businessEligibility === "BOTH"),
   );
 
   const handleAssignReplacement = () => {
     if (!selectedReplacementUnit) return;
-    const replacementVehicle = mockVehicles.find((v) => v.id === selectedReplacementUnit);
+    const replacementVehicle = mockVehicles.find(
+      (v) => v.id === selectedReplacementUnit,
+    );
     if (!replacementVehicle) return;
 
     // Reactively update contract allocations
-    const newAllocation = {
+    const newAllocation: ContractVehicleAllocation = {
+      id: `ALLOC-${Date.now()}`,
+      contractId: contract.id,
       vehicleId: replacementVehicle.id,
       plateNumber: replacementVehicle.plateNumber,
       model: `${replacementVehicle.brand} ${replacementVehicle.model}`,
@@ -82,6 +92,9 @@ function ContractDetailContent() {
       status: "REPLACEMENT" as const,
       location: replacementVehicle.locationArea,
       odometer: replacementVehicle.odometer,
+      allocationDate: new Date().toISOString().split("T")[0],
+      startDate: contract.startDate,
+      endDate: contract.endDate,
     };
 
     setContract((prev) => ({
@@ -118,13 +131,20 @@ function ContractDetailContent() {
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
             <div>
-              <div className="text-xs font-bold">Replacement Unit Successfully Deployed!</div>
+              <div className="text-xs font-bold">
+                Replacement Unit Successfully Deployed!
+              </div>
               <div className="text-[11px] text-emerald-700">
-                Fleet shortage has been resolved. Contract operational fulfillment restored to 100%.
+                Fleet shortage has been resolved. Contract operational
+                fulfillment restored to 100%.
               </div>
             </div>
           </div>
-          <Button size="xs" variant="outline" onClick={() => setIsSuccessToast(false)}>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => setIsSuccessToast(false)}
+          >
             Dismiss
           </Button>
         </div>
@@ -149,9 +169,17 @@ function ContractDetailContent() {
                 {contract.contractNumber}
               </span>
               <span className="text-neutral-300">•</span>
-              <span>Period: {formatDate(contract.startDate)} — {formatDate(contract.endDate)}</span>
+              <span>
+                Period: {formatDate(contract.startDate)} —{" "}
+                {formatDate(contract.endDate)}
+              </span>
               <span className="text-neutral-300">•</span>
-              <span>Billing: <strong className="text-neutral-900 font-mono">{formatRupiah(contract.monthlyBillingAmount)} / month</strong></span>
+              <span>
+                Billing:{" "}
+                <strong className="text-neutral-900 font-mono">
+                  {formatRupiah(contract.monthlyBillingAmount)} / month
+                </strong>
+              </span>
               <span className="text-neutral-300">•</span>
               <span>Terms: {contract.paymentTerm}</span>
             </div>
@@ -210,14 +238,18 @@ function ContractDetailContent() {
           <div className="text-2xl font-bold text-emerald-700 mt-1 font-mono">
             {contract.operationalFleet}
           </div>
-          <span className="text-[10px] text-emerald-700 font-medium">On the road</span>
+          <span className="text-[10px] text-emerald-700 font-medium">
+            On the road
+          </span>
         </div>
 
         <div className="p-4 rounded-lg border border-neutral-200 bg-white shadow-xs">
           <span className="text-[11px] uppercase font-semibold text-neutral-500 block">
             Maintenance
           </span>
-          <div className={`text-2xl font-bold mt-1 font-mono ${contract.maintenanceFleet > 0 ? "text-rose-600" : "text-neutral-900"}`}>
+          <div
+            className={`text-2xl font-bold mt-1 font-mono ${contract.maintenanceFleet > 0 ? "text-rose-600" : "text-neutral-900"}`}
+          >
             {contract.maintenanceFleet}
           </div>
           <span className="text-[10px] text-neutral-400">In workshop</span>
@@ -230,7 +262,9 @@ function ContractDetailContent() {
           <div className="text-2xl font-bold text-blue-600 mt-1 font-mono">
             {contract.replacementFleet}
           </div>
-          <span className="text-[10px] text-neutral-400">Temporary standby</span>
+          <span className="text-[10px] text-neutral-400">
+            Temporary standby
+          </span>
         </div>
       </div>
 
@@ -251,7 +285,9 @@ function ContractDetailContent() {
                 </span>
               </div>
               <p className="text-xs text-rose-700 mt-0.5">
-                Unit <strong>B 8899 KLU</strong> is currently undergoing brake overhaul at AutoCare Pulogadung. SLA requires immediate replacement unit dispatch.
+                Unit <strong>B 8899 KLU</strong> is currently undergoing brake
+                overhaul at AutoCare Pulogadung. SLA requires immediate
+                replacement unit dispatch.
               </p>
             </div>
           </div>
@@ -275,7 +311,8 @@ function ContractDetailContent() {
               Allocated Vehicles ({contract.allocatedVehicles.length})
             </CardTitle>
             <p className="text-xs text-neutral-500">
-              Specific vehicle roster deployed to {contract.corporateCustomerName}
+              Specific vehicle roster deployed to{" "}
+              {contract.corporateCustomerName}
             </p>
           </div>
         </CardHeader>
@@ -305,8 +342,8 @@ function ContractDetailContent() {
                       isUnderMaintenance
                         ? "bg-rose-50/50 hover:bg-rose-50"
                         : isReplacement
-                        ? "bg-blue-50/40 hover:bg-blue-50/70"
-                        : "hover:bg-neutral-50"
+                          ? "bg-blue-50/40 hover:bg-blue-50/70"
+                          : "hover:bg-neutral-50"
                     }
                   >
                     <TableCell className="text-center font-medium text-neutral-500 text-xs">
@@ -314,8 +351,12 @@ function ContractDetailContent() {
                     </TableCell>
                     <TableCell className="font-semibold text-neutral-900">
                       <div className="flex flex-col">
-                        <span className="font-bold text-xs">{veh.plateNumber}</span>
-                        <span className="text-[11px] text-neutral-500">{veh.model}</span>
+                        <span className="font-bold text-xs">
+                          {veh.plateNumber}
+                        </span>
+                        <span className="text-[11px] text-neutral-500">
+                          {veh.model}
+                        </span>
                       </div>
                     </TableCell>
 
@@ -367,7 +408,10 @@ function ContractDetailContent() {
       </Card>
 
       {/* Replacement Unit Workflow Dialog */}
-      <Dialog open={isReplacementModalOpen} onOpenChange={setIsReplacementModalOpen}>
+      <Dialog
+        open={isReplacementModalOpen}
+        onOpenChange={setIsReplacementModalOpen}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <div className="flex items-center gap-2">
@@ -375,7 +419,8 @@ function ContractDetailContent() {
               <DialogTitle>Find & Assign Replacement Unit</DialogTitle>
             </div>
             <DialogDescription>
-              Select an available candidate from the pool to cover the contract shortage for {contract.corporateCustomerName}.
+              Select an available candidate from the pool to cover the contract
+              shortage for {contract.corporateCustomerName}.
             </DialogDescription>
           </DialogHeader>
 
@@ -385,7 +430,9 @@ function ContractDetailContent() {
                 Policy & Business Rules
               </span>
               <p className="text-neutral-600 mt-0.5">
-                Eligible units include <strong>Jaja-owned</strong> or <strong>Vendor-owned (B2B approved)</strong> vehicles currently marked as AVAILABLE in pool.
+                Eligible units include <strong>Jaja-owned</strong> or{" "}
+                <strong>Vendor-owned (B2B approved)</strong> vehicles currently
+                marked as AVAILABLE in pool.
               </p>
             </div>
 
@@ -404,16 +451,26 @@ function ContractDetailContent() {
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-neutral-900">{candidate.plateNumber}</span>
+                        <span className="font-bold text-xs text-neutral-900">
+                          {candidate.plateNumber}
+                        </span>
                         <OwnershipBadge ownership={candidate.ownership} />
-                        <span className="text-[10px] text-neutral-500">{candidate.transmission} &middot; {candidate.fuelType}</span>
+                        <span className="text-[10px] text-neutral-500">
+                          {candidate.transmission} &middot; {candidate.fuelType}
+                        </span>
                       </div>
                       <div className="text-neutral-700 font-medium text-xs">
                         {candidate.brand} {candidate.model} ({candidate.year})
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-neutral-400">
-                        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {candidate.locationArea}</span>
-                        <span className="flex items-center gap-1 font-mono"><Gauge className="h-3 w-3" /> {formatNumber(candidate.odometer)} KM</span>
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />{" "}
+                          {candidate.locationArea}
+                        </span>
+                        <span className="flex items-center gap-1 font-mono">
+                          <Gauge className="h-3 w-3" />{" "}
+                          {formatNumber(candidate.odometer)} KM
+                        </span>
                       </div>
                     </div>
 
@@ -456,7 +513,13 @@ function ContractDetailContent() {
 
 export default function ContractDetailPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-xs text-neutral-400">Loading Contract Details...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-xs text-neutral-400">
+          Loading Contract Details...
+        </div>
+      }
+    >
       <ContractDetailContent />
     </Suspense>
   );

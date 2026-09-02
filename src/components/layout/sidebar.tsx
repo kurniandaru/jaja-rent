@@ -16,8 +16,9 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
-  CarFront,
+  User,
   Layers,
+  KeyRound,
   LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
 
   const criticalCount = mockActionRequired.filter(
-    (a) => a.priority === "CRITICAL"
+    (a) => a.priority === "CRITICAL",
   ).length;
 
   const navSections: NavSection[] = [
@@ -63,16 +64,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       ],
     },
     {
-      title: "FLEET",
+      title: "CUSTOMER",
       items: [
         {
-          name: "Fleet Management",
-          href: "/fleet",
-          icon: Car,
+          name: "Customers",
+          href: "/corporate/customers",
+          icon: User,
         },
         {
-          name: "Vendor Management",
-          href: "/vendors",
+          name: "Corporate Customers",
+          href: "/corporate/customers",
           icon: Building2,
         },
       ],
@@ -81,58 +82,37 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       title: "RENTAL",
       items: [
         {
-          name: "B2C Rental",
-          href: "/rental/b2c",
-          icon: Car,
-        },
-        {
-          name: "B2B Rental",
-          href: "/rental/b2b",
-          icon: Building2,
-          badge: "2 Req",
-          badgeVariant: "warning",
-        },
-        {
           name: "Reservations",
-          href: "/rental/reservations",
+          href: "/operations/reservations",
           icon: Calendar,
-        },
-      ],
-    },
-    {
-      title: "CORPORATE",
-      items: [
-        {
-          name: "Customers",
-          href: "/corporate/customers",
-          icon: Building2,
+          badge: "New",
+          badgeVariant: "default",
         },
         {
           name: "Contracts",
-          href: "/corporate/contracts",
+          href: "/operations/contracts",
           icon: FileText,
           badge: "1 Shortage",
           badgeVariant: "critical",
         },
         {
-          name: "Fleet Allocation",
-          href: "/corporate/allocation",
-          icon: Layers,
+          name: "Rentals",
+          href: "/operations/rentals",
+          icon: KeyRound,
         },
       ],
     },
     {
-      title: "OPERATIONS",
+      title: "FLEET",
       items: [
         {
-          name: "Live GPS",
-          href: "/operations/gps",
-          icon: Navigation,
-          isLive: true,
+          name: "Vehicles",
+          href: "/fleet",
+          icon: Car,
         },
         {
           name: "Inspection",
-          href: "/operations/inspection",
+          href: "/operations/inspections",
           icon: ClipboardCheck,
           badge: "4 Due",
         },
@@ -148,6 +128,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           icon: FileCheck2,
           badge: "2 Exp",
           badgeVariant: "critical",
+        },
+        {
+          name: "GPS Monitoring",
+          href: "/operations/gps",
+          icon: Navigation,
+          isLive: true,
+        },
+      ],
+    },
+    {
+      title: "VENDOR",
+      items: [
+        {
+          name: "Vendors",
+          href: "/vendors",
+          icon: Building2,
         },
       ],
     },
@@ -167,7 +163,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     <aside
       className={cn(
         "relative flex flex-col border-r border-neutral-200/80 bg-white transition-all duration-300 z-30 select-none",
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" : "w-64",
       )}
     >
       {/* Brand Header */}
@@ -221,7 +217,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               </h4>
             )}
             <div className="space-y-0.5">
-              {section.items.map((item) => {
+              {section.items.map((item, itemIdx) => {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
@@ -231,14 +227,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
                 return (
                   <Link
-                    key={item.name}
+                    key={`${section.title}-${item.name}-${itemIdx}`}
                     href={item.href}
                     title={collapsed ? item.name : undefined}
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all group",
                       isActive
                         ? "bg-neutral-900 text-white shadow-xs"
-                        : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+                        : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900",
                     )}
                   >
                     <Icon
@@ -246,7 +242,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         "h-4 w-4 shrink-0 transition-colors",
                         isActive
                           ? "text-white"
-                          : "text-neutral-500 group-hover:text-neutral-900"
+                          : "text-neutral-500 group-hover:text-neutral-900",
                       )}
                     />
 
@@ -270,12 +266,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                               ? "bg-rose-500 text-white"
                               : "bg-rose-100 text-rose-700"
                             : item.badgeVariant === "warning"
-                            ? isActive
-                              ? "bg-amber-400 text-neutral-900"
-                              : "bg-amber-100 text-amber-800"
-                            : isActive
-                            ? "bg-neutral-700 text-white"
-                            : "bg-neutral-100 text-neutral-700"
+                              ? isActive
+                                ? "bg-amber-400 text-neutral-900"
+                                : "bg-amber-100 text-amber-800"
+                              : isActive
+                                ? "bg-neutral-700 text-white"
+                                : "bg-neutral-100 text-neutral-700",
                         )}
                       >
                         {item.badge}
@@ -297,7 +293,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Jakarta Dispatch Hub
             </span>
-            <span className="text-[10px] text-neutral-400 font-mono">v2.4.0</span>
+            <span className="text-[10px] text-neutral-400 font-mono">
+              v2.4.0
+            </span>
           </div>
         </div>
       ) : (

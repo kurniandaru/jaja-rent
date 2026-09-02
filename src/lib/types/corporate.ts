@@ -10,6 +10,8 @@ export interface CorporateCustomer {
   picRole: string;
   picPhone: string;
   picEmail: string;
+  npwp?: string;
+  billingAddress?: string;
   activeContractsCount: number;
   totalAllocatedVehicles: number;
   operationalVehicles: number;
@@ -19,27 +21,45 @@ export interface CorporateCustomer {
 }
 
 export interface ContractVehicleAllocation {
+  id?: string;
+  contractId?: string;
   vehicleId: string;
   plateNumber: string;
   model: string;
   ownership: OwnershipType;
+  vendorId?: string;
+  vendorName?: string;
   assignedDriver?: string;
-  status: "OPERATIONAL" | "MAINTENANCE" | "REPLACEMENT";
+  driverPhone?: string;
+  status: "OPERATIONAL" | "MAINTENANCE" | "REPLACEMENT" | "PENDING_HANDOVER";
   location: string;
   odometer: number;
+  allocationDate?: string;
+  startDate?: string;
+  endDate?: string;
   replacementVehicleId?: string;
+  rentalId?: string; // Associated active rental ID
 }
 
 export interface CorporateContract {
   id: string; // e.g. "CTR-2026-001"
   contractNumber: string;
+  reservationId?: string; // Reference to originating reservation
   corporateCustomerId: string;
   corporateCustomerName: string;
   startDate: string;
   endDate: string;
-  status: "ACTIVE" | "EXPIRING_SOON" | "COMPLETED" | "DRAFT" | "TERMINATED";
+  status: "DRAFT" | "ACTIVE" | "EXPIRING_SOON" | "COMPLETED" | "TERMINATED";
   monthlyBillingAmount: number;
   paymentTerm: string;
+  
+  // Terms & SLA
+  slaDescription?: string;
+  maintenanceIncluded?: boolean;
+  insuranceIncluded?: boolean;
+  driverIncluded?: boolean;
+  termsAndConditions?: string;
+
   // Fleet requirements breakdown
   requiredFleet: number;
   allocatedFleet: number;
@@ -49,4 +69,6 @@ export interface CorporateContract {
   shortageCount: number; // required - (operational + replacement)
   allocatedVehicles: ContractVehicleAllocation[];
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
