@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { mockActionRequired } from "@/lib/data";
+import { NotificationCenter } from "@/components/notifications/notification-center";
 
 interface TopbarProps {
   onMobileMenuToggle?: () => void;
@@ -112,65 +113,8 @@ export function Topbar({ onMobileMenuToggle }: TopbarProps) {
         </form>
 
         {/* Action Required Alerts Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="relative h-8 w-8 rounded-md text-neutral-600"
-            >
-              <Bell className="h-4 w-4" />
-              {criticalCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white shadow-xs">
-                  {criticalCount}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 p-2">
-            <DropdownMenuLabel className="flex items-center justify-between pb-2">
-              <span className="text-xs font-semibold text-neutral-900">
-                Action Required ({mockActionRequired.length})
-              </span>
-              <span className="text-[10px] text-rose-600 font-semibold uppercase">
-                {criticalCount} Critical
-              </span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <div className="max-h-72 overflow-y-auto space-y-1 py-1">
-              {mockActionRequired.slice(0, 4).map((action) => (
-                <DropdownMenuItem
-                  key={action.id}
-                  onClick={() => router.push(action.actionUrl)}
-                  className="flex flex-col items-start gap-1 p-2 cursor-pointer rounded-md hover:bg-neutral-50"
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="font-semibold text-xs text-neutral-900 line-clamp-1">
-                      {action.title}
-                    </span>
-                    <span className="text-[10px] text-neutral-400 shrink-0">
-                      {action.dueText}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500 line-clamp-2">
-                    {action.description}
-                  </p>
-                </DropdownMenuItem>
-              ))}
-            </div>
-            <DropdownMenuSeparator />
-            <div className="p-1">
-              <Button
-                variant="subtle"
-                size="xs"
-                className="w-full text-center text-neutral-700"
-                onClick={() => router.push("/#action-required")}
-              >
-                View all in Dashboard
-              </Button>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* In-App Enterprise Notification Center (Phase 3) */}
+        <NotificationCenter />
 
         {/* Quick Action Dropdown */}
         <DropdownMenu>

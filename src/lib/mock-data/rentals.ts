@@ -1,4 +1,4 @@
-import { RentalRecord } from "../types/rental";
+import type { RentalRecord } from "../types/rental.ts";
 
 export const mockRentals: RentalRecord[] = [
   // 1. ACTIVE B2B Rental with verified Handover Proof & Pre-rental inspection
@@ -38,7 +38,8 @@ export const mockRentals: RentalRecord[] = [
       recipientPhone: "+62 811-9823-110",
       status: "DELIVERED",
       actualDeliveredAt: "2026-01-01 08:45 WIB",
-      notes: "Unit diterima langsung oleh Head of GA dalam kondisi bersih dan tersegel.",
+      notes:
+        "Unit diterima langsung oleh Head of GA dalam kondisi bersih dan tersegel.",
     },
     handover: {
       isHandedOver: true,
@@ -50,9 +51,11 @@ export const mockRentals: RentalRecord[] = [
       receivedByPhone: "+62 811-9823-110",
       odometerAtHandover: 82421,
       fuelLevelPercent: 100,
-      notes: "Berita Acara Serah Terima (BAST) fisik dan digital ditandatangani lengkap.",
+      notes:
+        "Berita Acara Serah Terima (BAST) fisik dan digital ditandatangani lengkap.",
       documentName: "BAST_ABC_Zenix_B1234XYZ.pdf",
-      documentUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80",
+      documentUrl:
+        "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80",
       photos: [
         "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1563720223185-11003d516935?w=600&auto=format&fit=crop&q=80",
@@ -66,7 +69,8 @@ export const mockRentals: RentalRecord[] = [
       grade: "A",
       status: "PASSED",
       issuesCount: 0,
-      summaryNotes: "Kendaraan dalam kondisi prima siap serah terima kontrak B2B.",
+      summaryNotes:
+        "Kendaraan dalam kondisi prima siap serah terima kontrak B2B.",
     },
     notes: "Unit VIP Board of Directors PT ABC Indonesia.",
     createdAt: "2025-12-28",
@@ -122,7 +126,8 @@ export const mockRentals: RentalRecord[] = [
       odometerAtHandover: 31050,
       fuelLevelPercent: 100,
       documentName: "Handover_B2C_Hendrawan.pdf",
-      documentUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80",
+      documentUrl:
+        "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80",
       photos: [
         "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600&auto=format&fit=crop&q=80",
       ],

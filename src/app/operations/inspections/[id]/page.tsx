@@ -6,7 +6,18 @@ import { useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DigitalInspectionRecord, InspectionItem } from "@/lib/types/inspection";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  DigitalInspectionRecord,
+  InspectionItem,
+} from "@/lib/types/inspection";
 import { getDigitalInspectionById } from "@/lib/data/inspections";
 import { getGradeColor } from "@/lib/inspections/inspection-calculator";
 import { formatNumber } from "@/lib/utils";
@@ -23,14 +34,15 @@ import {
   Printer,
   CheckCircle2,
   AlertTriangle,
-  Edit,
+  FileText,
 } from "lucide-react";
 
 export default function InspectionDetailPage() {
   const params = useParams();
   const id = params?.id as string;
 
-  const [inspection, setInspection] = React.useState<DigitalInspectionRecord | null>(null);
+  const [inspection, setInspection] =
+    React.useState<DigitalInspectionRecord | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -63,7 +75,9 @@ export default function InspectionDetailPage() {
           Data Inspeksi Tidak Ditemukan
         </h2>
         <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-          Nomor inspeksi <code className="font-mono text-neutral-800">{id}</code> tidak terdaftar di sistem.
+          Nomor inspeksi{" "}
+          <code className="font-mono text-neutral-800">{id}</code> tidak
+          terdaftar di sistem.
         </p>
         <Link href="/operations/inspections">
           <Button variant="outline" size="sm" className="text-xs gap-1.5 mt-2">
@@ -86,16 +100,44 @@ export default function InspectionDetailPage() {
     ...(inspection.frameItems || []),
   ];
   const issuesList = allItems.filter(
-    (i) => i.grade === "C" || i.grade === "D" || i.grade === "E"
+    (i) => i.grade === "C" || i.grade === "D" || i.grade === "E",
   );
   const testDriveIssues = (inspection.testDriveItems || []).filter(
-    (td) => td.status === "ISSUE"
+    (td) => td.status === "ISSUE",
   );
 
   // Photos
   const photoEntries = Object.entries(inspection.photos || {}).filter(
-    ([_, val]) => Boolean(val)
+    ([_, val]) => Boolean(val),
   );
+
+  // Group items by category for the structured tables
+  const categoriesList = [
+    {
+      title: "1. Komponen Eksterior Bodi & Panel",
+      icon: Car,
+      items: inspection.exteriorItems || [],
+      grade: grades.exteriorGrade,
+    },
+    {
+      title: "2. Komponen Interior & Kabin",
+      icon: Armchair,
+      items: inspection.interiorItems || [],
+      grade: grades.interiorGrade,
+    },
+    {
+      title: "3. Komponen Mesin & Mekanikal",
+      icon: Wrench,
+      items: inspection.mechanicalItems || [],
+      grade: grades.mechanicalGrade,
+    },
+    {
+      title: "4. Komponen Rangka & Sasis (Struktur Utama)",
+      icon: Layers,
+      items: inspection.frameItems || [],
+      grade: grades.frameGrade,
+    },
+  ];
 
   return (
     <div className="space-y-6 pb-16">
@@ -121,35 +163,34 @@ export default function InspectionDetailPage() {
               >
                 {inspection.status}
               </span>
+              <span className="text-xs text-neutral-500 font-medium">
+                Digital Vehicle Inspection Record
+              </span>
             </div>
-            <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-neutral-900 mt-0.5">
-              Hasil Laporan Inspeksi — {vehicleSpecs?.plateNumber}
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900 mt-1">
+              Hasil Laporan Inspeksi Kendaraan Digital
             </h1>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {inspection.status === "DRAFT" && (
-            <Link href={`/operations/inspections/new`}>
-              <Button variant="outline" size="sm" className="text-xs gap-1.5 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100">
-                <Edit className="h-3.5 w-3.5" />
-                Lanjutkan Draft
-              </Button>
-            </Link>
-          )}
-
           <Button
             variant="outline"
             size="sm"
             onClick={() => window.print()}
-            className="text-xs gap-1.5 border-neutral-300"
+            className="text-xs gap-1.5 font-semibold"
           >
-            <Printer className="h-3.5 w-3.5 text-neutral-600" />
-            Cetak / Export PDF
+            <Printer className="h-3.5 w-3.5" />
+            Cetak / PDF
           </Button>
 
-          <Link href={`/fleet/${vehicleSpecs?.plateNumber?.replace(/\s+/g, "-")}`}>
-            <Button size="sm" className="text-xs gap-1.5 bg-neutral-900 text-white font-bold">
+          <Link
+            href={`/fleet/${vehicleSpecs?.plateNumber?.replace(/\s+/g, "-")}`}
+          >
+            <Button
+              size="sm"
+              className="text-xs gap-1.5 bg-neutral-900 text-white font-bold"
+            >
               <Car className="h-3.5 w-3.5" />
               Lihat Detail Unit
             </Button>
@@ -179,14 +220,19 @@ export default function InspectionDetailPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-neutral-900">
-                  {vehicleSpecs?.brand} {vehicleSpecs?.model} ({vehicleSpecs?.series})
+                  {vehicleSpecs?.brand} {vehicleSpecs?.model} (
+                  {vehicleSpecs?.series})
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-neutral-100 text-neutral-800">
                   {overallConfig.label}
                 </span>
               </div>
               <p className="text-xs text-neutral-500 mt-0.5">
-                Diinspeksi oleh <strong>{inspection.inspectorName}</strong> pada {inspection.inspectionDate} &middot; Odometer: <strong>{formatNumber(inspection.inspectionOdometer)} KM</strong>
+                Diinspeksi oleh <strong>{inspection.inspectorName}</strong> pada{" "}
+                {inspection.inspectionDate} &middot; Odometer:{" "}
+                <strong>
+                  {formatNumber(inspection.inspectionOdometer)} KM
+                </strong>
               </p>
 
               {/* Status Recommendation */}
@@ -248,7 +294,9 @@ export default function InspectionDetailPage() {
                 <Car className="h-3.5 w-3.5 text-neutral-400" />
                 Eksterior
               </span>
-              <span className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.exteriorGrade).badge}`}>
+              <span
+                className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.exteriorGrade).badge}`}
+              >
                 Grade {grades.exteriorGrade}
               </span>
             </div>
@@ -263,7 +311,9 @@ export default function InspectionDetailPage() {
                 <Armchair className="h-3.5 w-3.5 text-neutral-400" />
                 Interior
               </span>
-              <span className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.interiorGrade).badge}`}>
+              <span
+                className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.interiorGrade).badge}`}
+              >
                 Grade {grades.interiorGrade}
               </span>
             </div>
@@ -276,9 +326,11 @@ export default function InspectionDetailPage() {
             <div className="flex items-center justify-between">
               <span className="font-semibold text-neutral-700 flex items-center gap-1">
                 <Wrench className="h-3.5 w-3.5 text-neutral-400" />
-                Mesin & Transmisi
+                Mesin & Mekanikal
               </span>
-              <span className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.mechanicalGrade).badge}`}>
+              <span
+                className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.mechanicalGrade).badge}`}
+              >
                 Grade {grades.mechanicalGrade}
               </span>
             </div>
@@ -293,7 +345,9 @@ export default function InspectionDetailPage() {
                 <Layers className="h-3.5 w-3.5 text-neutral-400" />
                 Sasis & Rangka
               </span>
-              <span className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.frameGrade).badge}`}>
+              <span
+                className={`font-bold px-1.5 py-0.2 rounded text-[11px] ${getGradeColor(grades.frameGrade).badge}`}
+              >
                 Grade {grades.frameGrade}
               </span>
             </div>
@@ -325,18 +379,24 @@ export default function InspectionDetailPage() {
         </div>
       </Card>
 
-      {/* Main Tabs Detail */}
-      <Tabs defaultValue="issues" className="w-full">
+      {/* Main Tabs Detail (Issues, Checklist Tables, Test Drive, Photos) */}
+      <Tabs defaultValue="checklist" className="w-full">
         <TabsList className="bg-neutral-100 p-1 border border-neutral-200/80">
+          <TabsTrigger
+            value="checklist"
+            className="text-xs font-semibold gap-1.5"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+            Checklist Lengkap ({allItems.length})
+          </TabsTrigger>
           <TabsTrigger value="issues" className="text-xs font-semibold gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
             Temuan Masalah ({issuesList.length + testDriveIssues.length})
           </TabsTrigger>
-          <TabsTrigger value="checklist" className="text-xs font-semibold gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            Checklist Lengkap ({allItems.length})
-          </TabsTrigger>
-          <TabsTrigger value="testdrive" className="text-xs font-semibold gap-1.5">
+          <TabsTrigger
+            value="testdrive"
+            className="text-xs font-semibold gap-1.5"
+          >
             <Gauge className="h-3.5 w-3.5 text-blue-600" />
             Hasil Test Drive (8)
           </TabsTrigger>
@@ -344,42 +404,152 @@ export default function InspectionDetailPage() {
             <Camera className="h-3.5 w-3.5 text-purple-600" />
             Foto Dokumentasi ({photoEntries.length})
           </TabsTrigger>
-          <TabsTrigger value="specs" className="text-xs font-semibold gap-1.5">
-            <Car className="h-3.5 w-3.5 text-neutral-600" />
-            Spesifikasi Unit
-          </TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Issues */}
+        {/* TAB 1: CHECKLIST LENGKAP GROUPED BY TABLES */}
+        <TabsContent value="checklist" className="mt-4 space-y-6">
+          {categoriesList.map((cat, catIdx) => (
+            <Card key={catIdx} className="border-neutral-200/80 shadow-xs">
+              <CardHeader className="p-4 border-b border-neutral-100 flex flex-row items-center justify-between bg-neutral-50/60">
+                <div className="flex items-center gap-2">
+                  <cat.icon className="h-4.5 w-4.5 text-neutral-700" />
+                  <CardTitle className="text-sm font-bold text-neutral-900">
+                    {cat.title}
+                  </CardTitle>
+                </div>
+                <span
+                  className={`font-bold px-2.5 py-0.5 rounded-full text-xs ${getGradeColor(cat.grade || "A").badge}`}
+                >
+                  Grade {cat.grade} ({cat.items.length} Item)
+                </span>
+              </CardHeader>
+
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-white">
+                    <TableRow className="text-xs">
+                      <TableHead className="w-12 font-bold text-center">
+                        No
+                      </TableHead>
+                      <TableHead className="font-bold">
+                        Item Pemeriksaan
+                      </TableHead>
+                      <TableHead className="font-bold">
+                        Standar Kondisi
+                      </TableHead>
+                      <TableHead className="w-24 font-bold text-center">
+                        Grade
+                      </TableHead>
+                      <TableHead className="font-bold">
+                        Catatan & Temuan Inspector
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cat.items.map((item, idx) => {
+                      const isDefect =
+                        item.grade === "C" ||
+                        item.grade === "D" ||
+                        item.grade === "E";
+                      return (
+                        <TableRow
+                          key={item.id}
+                          className={`text-xs hover:bg-neutral-50/60 ${
+                            isDefect ? "bg-amber-50/30" : ""
+                          }`}
+                        >
+                          <TableCell className="text-center font-mono font-bold text-neutral-400">
+                            {idx + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-0.5">
+                              <strong className="text-neutral-900 block font-semibold">
+                                {item.nameId}
+                              </strong>
+                              {item.name && (
+                                <span className="text-[10px] text-neutral-400 block font-mono">
+                                  {item.name}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-neutral-600 text-[11px]">
+                            Standar OEM & Bebas Kerusakan
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span
+                              className={`inline-block font-bold px-2.5 py-0.5 rounded text-xs ${
+                                getGradeColor(item.grade || "A").badge
+                              }`}
+                            >
+                              Grade {item.grade || "A"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {item.note ? (
+                              <span className="text-[11px] text-rose-800 font-medium">
+                                {item.note}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-emerald-700 flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Baik / Normal
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+
+        {/* TAB 2: ISSUES & FINDINGS */}
         <TabsContent value="issues" className="mt-4">
           <Card className="border-neutral-200/80 shadow-xs">
             <CardHeader className="p-4 border-b border-neutral-100">
               <CardTitle className="text-sm font-bold text-neutral-900">
-                Rincian Seluruh Masalah & Catatan Kerusakan
+                Temuan Masalah & Catatan Perbaikan (
+                {issuesList.length + testDriveIssues.length})
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4">
               {issuesList.length === 0 && testDriveIssues.length === 0 ? (
-                <div className="p-8 text-center text-neutral-500 text-xs">
-                  <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                  <span className="font-bold text-neutral-800">
-                    Tidak Ditemukan Masalah Fisik Maupun Mekanikal
-                  </span>
-                  <p className="text-neutral-400 mt-0.5">
-                    Seluruh komponen dalam batas toleransi prima Grade A dan Grade B.
+                <div className="p-8 text-center text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-200">
+                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-600" />
+                  <p className="font-bold text-sm">
+                    Tidak Ditemukan Masalah Signifikan
+                  </p>
+                  <p className="text-xs text-emerald-600 mt-1">
+                    Seluruh komponen kendaraan memenuhi standar kualitas Grade
+                    A/B dan siap beroperasi.
                   </p>
                 </div>
               ) : (
                 <div className="divide-y divide-neutral-100 text-xs">
                   {issuesList.map((item) => (
-                    <div key={item.id} className="py-3 flex items-start justify-between gap-4">
+                    <div
+                      key={item.id}
+                      className="py-3 flex items-start justify-between gap-4"
+                    >
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${getGradeColor(item.grade || "C").badge}`}>
+                          <span
+                            className={`font-bold px-2 py-0.5 rounded text-xs ${
+                              getGradeColor(item.grade || "C").badge
+                            }`}
+                          >
                             Grade {item.grade}
                           </span>
-                          <span className="font-bold text-neutral-900">{item.nameId}</span>
-                          <span className="text-[10px] text-neutral-400">({item.category})</span>
+                          <span className="font-bold text-neutral-900">
+                            {item.nameId}
+                          </span>
+                          <span className="text-[10px] text-neutral-400">
+                            ({item.category})
+                          </span>
                         </div>
                         {item.note && (
                           <p className="text-neutral-600 mt-1 text-[11px] pl-2.5 border-l-2 border-amber-400">
@@ -387,29 +557,22 @@ export default function InspectionDetailPage() {
                           </p>
                         )}
                       </div>
-                      {item.photos && item.photos.length > 0 && (
-                        <div className="flex gap-1.5 shrink-0">
-                          {item.photos.map((pUrl, pIdx) => (
-                            <img
-                              key={pIdx}
-                              src={pUrl}
-                              alt="Bukti"
-                              className="h-10 w-10 object-cover rounded-md border border-neutral-200"
-                            />
-                          ))}
-                        </div>
-                      )}
                     </div>
                   ))}
 
                   {testDriveIssues.map((td) => (
-                    <div key={td.id} className="py-3 flex items-start justify-between gap-4">
+                    <div
+                      key={td.id}
+                      className="py-3 flex items-start justify-between gap-4"
+                    >
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold px-1.5 py-0.2 rounded text-[10px] bg-rose-600 text-white">
                             Test Drive Issue
                           </span>
-                          <span className="font-bold text-neutral-900">{td.nameId}</span>
+                          <span className="font-bold text-neutral-900">
+                            {td.nameId}
+                          </span>
                         </div>
                         {td.note && (
                           <p className="text-neutral-600 mt-1 text-[11px] pl-2.5 border-l-2 border-rose-400">
@@ -425,50 +588,7 @@ export default function InspectionDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Tab 2: Full Checklist */}
-        <TabsContent value="checklist" className="mt-4">
-          <Card className="border-neutral-200/80 shadow-xs">
-            <CardHeader className="p-4 border-b border-neutral-100">
-              <CardTitle className="text-sm font-bold text-neutral-900">
-                Daftar Lengkap Audit Seluruh Komponen ({allItems.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                {allItems.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="p-2.5 rounded-lg border border-neutral-200/80 bg-white flex items-center justify-between gap-2"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-mono text-neutral-400">
-                          {idx + 1}.
-                        </span>
-                        <span className="font-semibold text-neutral-900 truncate">
-                          {item.nameId}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-neutral-400 block pl-4">
-                        {item.category}
-                      </span>
-                    </div>
-
-                    <span
-                      className={`font-bold px-2 py-0.5 rounded text-xs shrink-0 ${
-                        getGradeColor(item.grade || "A").badge
-                      }`}
-                    >
-                      {item.grade || "A"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 3: Test Drive */}
+        {/* TAB 3: TEST DRIVE */}
         <TabsContent value="testdrive" className="mt-4">
           <Card className="border-neutral-200/80 shadow-xs">
             <CardHeader className="p-4 border-b border-neutral-100">
@@ -476,44 +596,62 @@ export default function InspectionDetailPage() {
                 Hasil Uji Jalan Dinamis (8 Parameter)
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                {(inspection.testDriveItems || []).map((td, idx) => (
-                  <div
-                    key={td.id}
-                    className={`p-3 rounded-lg border ${
-                      td.status === "ISSUE"
-                        ? "bg-rose-50/50 border-rose-200"
-                        : "bg-white border-neutral-200/80"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-neutral-900">
-                        {idx + 1}. {td.nameId}
-                      </span>
-                      <span
-                        className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                          td.status === "NORMAL"
-                            ? "bg-emerald-600 text-white"
-                            : "bg-rose-600 text-white"
-                        }`}
-                      >
-                        {td.status === "NORMAL" ? "Normal" : "Ada Masalah"}
-                      </span>
-                    </div>
-                    {td.note && (
-                      <p className="text-[11px] text-rose-700 mt-2 pl-2 border-l-2 border-rose-400">
-                        {td.note}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader className="bg-neutral-50/80">
+                  <TableRow className="text-xs">
+                    <TableHead className="w-12 font-bold text-center">
+                      No
+                    </TableHead>
+                    <TableHead className="font-bold">
+                      Parameter Uji Jalan
+                    </TableHead>
+                    <TableHead className="font-bold text-center w-28">
+                      Status
+                    </TableHead>
+                    <TableHead className="font-bold">
+                      Catatan Pengujian
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(inspection.testDriveItems || []).map((td, idx) => (
+                    <TableRow
+                      key={td.id}
+                      className="text-xs hover:bg-neutral-50/60"
+                    >
+                      <TableCell className="text-center font-mono font-bold text-neutral-500">
+                        {idx + 1}
+                      </TableCell>
+                      <TableCell className="font-semibold text-neutral-900">
+                        {td.nameId}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span
+                          className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                            td.status === "NORMAL"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-rose-100 text-rose-800"
+                          }`}
+                        >
+                          {td.status === "NORMAL" ? "NORMAL ✓" : "ADA ISU ⚠"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-neutral-600 text-[11px]">
+                          {td.note ||
+                            "Performa responsif dan bekerja normal tanpa kendala."}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Tab 4: Photos */}
+        {/* TAB 4: PHOTOS */}
         <TabsContent value="photos" className="mt-4">
           <Card className="border-neutral-200/80 shadow-xs">
             <CardHeader className="p-4 border-b border-neutral-100">
@@ -549,57 +687,6 @@ export default function InspectionDetailPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 5: Specs */}
-        <TabsContent value="specs" className="mt-4">
-          <Card className="border-neutral-200/80 shadow-xs">
-            <CardHeader className="p-4 border-b border-neutral-100">
-              <CardTitle className="text-sm font-bold text-neutral-900">
-                Spesifikasi Master & Dokumen Kendaraan
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Nomor Polisi</span>
-                  <span className="font-mono font-bold text-sm text-neutral-900 block mt-0.5">{vehicleSpecs?.plateNumber}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Merek & Model</span>
-                  <span className="font-semibold text-neutral-900 block mt-0.5">{vehicleSpecs?.brand} {vehicleSpecs?.model}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Seri / Varian</span>
-                  <span className="font-semibold text-neutral-800 block mt-0.5">{vehicleSpecs?.series}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Tahun / Transmisi</span>
-                  <span className="font-semibold text-neutral-800 block mt-0.5">{vehicleSpecs?.year} &middot; {vehicleSpecs?.transmission}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Kapasitas Mesin (CC)</span>
-                  <span className="font-semibold text-neutral-800 block mt-0.5">{vehicleSpecs?.engineCapacityCc} CC ({vehicleSpecs?.fuelType})</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Warna Bodi</span>
-                  <span className="font-semibold text-neutral-800 block mt-0.5">{vehicleSpecs?.color}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70 col-span-2">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Nomor Rangka (VIN)</span>
-                  <span className="font-mono font-semibold text-neutral-900 block mt-0.5">{vehicleSpecs?.vinChassisNumber}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70 col-span-2">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Nomor Mesin</span>
-                  <span className="font-mono font-semibold text-neutral-900 block mt-0.5">{vehicleSpecs?.engineNumber}</span>
-                </div>
-                <div className="bg-neutral-50 p-3 rounded-lg border border-neutral-200/70 col-span-2">
-                  <span className="text-neutral-400 uppercase text-[10px] font-semibold block">Kepemilikan Unit</span>
-                  <span className="font-semibold text-neutral-900 block mt-0.5">{vehicleSpecs?.ownership}</span>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

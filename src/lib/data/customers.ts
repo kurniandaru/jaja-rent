@@ -12,11 +12,26 @@ import {
 } from "@/lib/types/customer";
 import { AgreementAcceptanceRecord } from "@/lib/types/agreement";
 import { evaluateCustomerEligibility } from "@/lib/services/eligibility-engine";
+import { generateCustomerNumber } from "@/lib/services/customer-service";
+import { recordAuditLog } from "@/lib/services/audit-service";
+
+import {
+  seedVerifiedCustomer,
+  seedPendingCustomer,
+  seedRejectedCustomer,
+  seedCorporateCustomer,
+} from "@/lib/mock-data/phase1-seed";
 
 let cachedIndividualCustomers: IndividualCustomer[] = [
+  seedVerifiedCustomer,
+  seedPendingCustomer,
+  seedRejectedCustomer,
   ...mockIndividualCustomers,
 ];
-let cachedCorporateCustomers: CorporateCustomer[] = [...mockCorporateCustomers];
+let cachedCorporateCustomers: CorporateCustomer[] = [
+  seedCorporateCustomer,
+  ...mockCorporateCustomers,
+];
 
 // In-memory / localStorage initialization
 function initLocalStorage() {
@@ -89,9 +104,7 @@ export async function getCorporateCustomerById(
   );
 }
 
-export async function getCustomerById(
-  id: string,
-): Promise<{
+export async function getCustomerById(id: string): Promise<{
   customer: IndividualCustomer | CorporateCustomer;
   type: "INDIVIDUAL" | "CORPORATE";
 } | null> {
@@ -115,6 +128,7 @@ export async function createIndividualCustomer(
   initLocalStorage();
   const newCustomer: IndividualCustomer = {
     id: `CUST-${Date.now().toString().slice(-4)}`,
+    customerNumber: generateCustomerNumber(),
     type: "INDIVIDUAL",
     name: data.name,
     nik: data.nik || "3174000000000000",
@@ -165,6 +179,20 @@ export async function createIndividualCustomer(
 
   cachedIndividualCustomers = [newCustomer, ...cachedIndividualCustomers];
   persistLocalStorage();
+
+  await recordAuditLog({
+    actorName: "Registration Form",
+    entityType: "CUSTOMER",
+    entityId: newCustomer.id,
+    action: "CUSTOMER_REGISTERED",
+    newData: {
+      customerNumber: newCustomer.customerNumber,
+      name: newCustomer.name,
+      status: newCustomer.status,
+    },
+    notes: `Customer baru didaftarkan: ${newCustomer.name} (${newCustomer.customerNumber})`,
+  });
+
   return newCustomer;
 }
 
@@ -264,6 +292,15 @@ export async function updateCustomerLifecycleStatus(
     if (reviewNotes)
       cachedIndividualCustomers[indivIdx].reviewNotes = reviewNotes;
     persistLocalStorage();
+
+    await recordAuditLog({
+      actorName: "QC Operator",
+      entityType: "CUSTOMER",
+      entityId: customerId,
+      action: `CUSTOMER_STATUS_${newStatus}`,
+      notes: reviewNotes || `Status customer diperbarui menjadi ${newStatus}`,
+    });
+
     return {
       success: true,
       message: `Status customer berhasil diubah ke ${newStatus}`,
@@ -278,6 +315,17 @@ export async function updateCustomerLifecycleStatus(
     if (reviewNotes)
       cachedCorporateCustomers[corpIdx].reviewNotes = reviewNotes;
     persistLocalStorage();
+
+    await recordAuditLog({
+      actorName: "QC Operator",
+      entityType: "CUSTOMER",
+      entityId: customerId,
+      action: `CUSTOMER_STATUS_${newStatus}`,
+      notes:
+        reviewNotes ||
+        `Status corporate customer diperbarui menjadi ${newStatus}`,
+    });
+
     return {
       success: true,
       message: `Status corporate customer berhasil diubah ke ${newStatus}`,
@@ -324,6 +372,20 @@ export async function verifyCustomerDocument(
       }
 
       persistLocalStorage();
+
+      await recordAuditLog({
+        actorName: verifiedBy,
+        entityType: "CUSTOMER",
+        entityId: customerId,
+        action:
+          status === "VERIFIED"
+            ? "VERIFY_CUSTOMER_DOCUMENT"
+            : "REJECT_CUSTOMER_DOCUMENT",
+        notes: rejectionReason
+          ? `Alasan penolakan: ${rejectionReason}`
+          : `Dokumen ${doc.documentName} telah diverifikasi oleh ${verifiedBy}`,
+      });
+
       return {
         success: true,
         message: `Dokumen ${doc.documentName} telah diubah menjadi ${status}`,
@@ -353,6 +415,20 @@ export async function verifyCustomerDocument(
       }
 
       persistLocalStorage();
+
+      await recordAuditLog({
+        actorName: verifiedBy,
+        entityType: "CUSTOMER",
+        entityId: customerId,
+        action:
+          status === "VERIFIED"
+            ? "VERIFY_CUSTOMER_DOCUMENT"
+            : "REJECT_CUSTOMER_DOCUMENT",
+        notes: rejectionReason
+          ? `Alasan penolakan: ${rejectionReason}`
+          : `Dokumen ${doc.documentName} telah diverifikasi oleh ${verifiedBy}`,
+      });
+
       return {
         success: true,
         message: `Dokumen ${doc.documentName} telah diubah menjadi ${status}`,
@@ -382,6 +458,15 @@ export async function recordAgreementAcceptance(
       indiv.status = "ACTIVE"; // Fully active upon agreement acceptance!
     }
     persistLocalStorage();
+
+    await recordAuditLog({
+      actorName: acceptance.acceptedBy || "Penyewa",
+      entityType: "CUSTOMER",
+      entityId: customerId,
+      action: "AGREEMENT_ACCEPTED",
+      notes: `Menyetujui ${record.agreementType} versi ${record.agreementVersion} dari IP ${record.ipAddress}`,
+    });
+
     return { success: true, data: record };
   }
 
@@ -392,6 +477,15 @@ export async function recordAgreementAcceptance(
       corp.status = "ACTIVE";
     }
     persistLocalStorage();
+
+    await recordAuditLog({
+      actorName: acceptance.acceptedBy || "PIC Corporate",
+      entityType: "CUSTOMER",
+      entityId: customerId,
+      action: "AGREEMENT_ACCEPTED",
+      notes: `Menyetujui ${record.agreementType} versi ${record.agreementVersion} dari IP ${record.ipAddress}`,
+    });
+
     return { success: true, data: record };
   }
 

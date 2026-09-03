@@ -6,10 +6,15 @@ export type VehicleStatus =
   | "AVAILABLE"
   | "RENTED"
   | "RESERVED"
+  | "ALLOCATED"
+  | "RETURNED"
   | "MAINTENANCE"
   | "INSPECTION"
+  | "QC"
+  | "ACCIDENT"
   | "DOCUMENT_HOLD"
-  | "INACTIVE";
+  | "INACTIVE"
+  | "SOLD";
 
 export type VehicleLifecycleStage =
   | "ONBOARDING"
@@ -17,9 +22,11 @@ export type VehicleLifecycleStage =
   | "INSPECTION"
   | "AVAILABLE"
   | "RESERVED"
+  | "ALLOCATED"
   | "RENTED"
   | "RETURNING"
   | "MAINTENANCE"
+  | "QC"
   | "PROBLEM";
 
 export interface Vehicle {
@@ -40,7 +47,9 @@ export interface Vehicle {
   vendorName?: string; // If VENDOR_OWNED
   businessEligibility: BusinessEligibility;
   status: VehicleStatus;
+  lifecycleStatus?: "ACTIVE" | "INACTIVE" | "SOLD";
   lifecycleStage: VehicleLifecycleStage;
+  currentAllocationId?: string;
   currentRentalId?: string;
   currentCustomerId?: string;
   currentCustomerName?: string;

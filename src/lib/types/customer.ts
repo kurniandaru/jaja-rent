@@ -1,7 +1,10 @@
-import { AgreementAcceptanceRecord } from "./agreement";
+import type { AgreementAcceptanceRecord } from "./agreement";
 
 export type CustomerLifecycleStatus =
   | "DRAFT"
+  | "PENDING_VERIFICATION"
+  | "VERIFIED"
+  | "REJECTED"
   | "SUBMITTED"
   | "DOCUMENT_REVIEW"
   | "NEED_REVISION"
@@ -38,6 +41,7 @@ export interface CustomerDocument {
   issueDate?: string;
   expiryDate?: string; // If applicable (e.g. SIM expiry)
   fileUrl?: string;
+  filePath?: string;
   fileName?: string;
   fileSize?: string;
   isRequired: boolean;
@@ -125,6 +129,7 @@ export interface RentalEligibilityResult {
 
 export interface IndividualCustomer {
   id: string; // e.g. "CUST-001"
+  customerNumber?: string; // e.g. "CUS-000001"
   type: "INDIVIDUAL";
   name: string;
   nik: string;
@@ -157,9 +162,10 @@ export interface IndividualCustomer {
 
 export interface CorporateCustomer {
   id: string; // e.g. "CORP-001"
+  customerNumber?: string; // e.g. "CUS-000002"
   type: "CORPORATE";
   name: string; // Shortcut company name
-  
+
   // Structured Sections
   companyInfo: CompanyInfo;
   pic: PicInfo;

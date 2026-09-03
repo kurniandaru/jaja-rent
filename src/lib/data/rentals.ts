@@ -1,5 +1,11 @@
-import { mockRentals } from "@/lib/mock-data/rentals";
-import { RentalRecord, RentalType, RentalStatus, VehicleHandover } from "@/lib/types/rental";
+import { mockRentals } from "../mock-data/rentals.ts";
+import type {
+  RentalRecord,
+  RentalType,
+  RentalStatus,
+  VehicleHandover,
+} from "../types/rental.ts";
+import { recordAuditLog } from "../services/audit-service.ts";
 
 let cachedRentals: RentalRecord[] = [...mockRentals];
 
@@ -42,11 +48,13 @@ export async function getActiveRentals(): Promise<RentalRecord[]> {
 
 export async function getRentalById(id: string): Promise<RentalRecord | null> {
   initLocalStorage();
-  return cachedRentals.find((r) => r.id.toLowerCase() === id.toLowerCase()) || null;
+  return (
+    cachedRentals.find((r) => r.id.toLowerCase() === id.toLowerCase()) || null
+  );
 }
 
 export async function saveRental(
-  record: RentalRecord
+  record: RentalRecord,
 ): Promise<{ success: boolean; data: RentalRecord }> {
   initLocalStorage();
   const existingIdx = cachedRentals.findIndex((r) => r.id === record.id);
@@ -66,15 +74,27 @@ export async function saveRental(
 
 export async function updateRentalStatus(
   rentalId: string,
-  status: RentalStatus
+  status: RentalStatus,
 ): Promise<{ success: boolean }> {
   initLocalStorage();
   const rental = cachedRentals.find((r) => r.id === rentalId);
   if (!rental) return { success: false };
 
+  const oldStatus = rental.status;
   rental.status = status;
   rental.updatedAt = new Date().toISOString().split("T")[0];
   persistLocalStorage();
+
+  await recordAuditLog({
+    actorName: "Operations Dispatcher",
+    entityType: "RENTAL",
+    entityId: rentalId,
+    action: `RENTAL_STATUS_${status}`,
+    oldData: { status: oldStatus },
+    newData: { status },
+    notes: `Status rental ${rentalId} diperbarui dari ${oldStatus} menjadi ${status}`,
+  });
+
   return { success: true };
 }
 
@@ -84,7 +104,7 @@ export async function updateRentalStatus(
  */
 export async function confirmVehicleHandover(
   rentalId: string,
-  handoverData: Partial<VehicleHandover>
+  handoverData: Partial<VehicleHandover>,
 ): Promise<{ success: boolean; data?: RentalRecord }> {
   initLocalStorage();
   const rental = cachedRentals.find((r) => r.id === rentalId);
@@ -100,8 +120,17 @@ export async function confirmVehicleHandover(
   // Status transitions to ACTIVE immediately upon confirmed handover!
   rental.status = "ACTIVE";
   rental.updatedAt = new Date().toISOString().split("T")[0];
-
   persistLocalStorage();
+
+  await recordAuditLog({
+    actorName: handoverData.handedBy || "Field Ops Officer",
+    entityType: "RENTAL",
+    entityId: rentalId,
+    action: "RENTAL_ACTIVATED",
+    newData: { status: "ACTIVE", vehiclePlate: rental.vehiclePlate },
+    notes: `Kendaraan ${rental.vehiclePlate} telah diserahterimakan dan rental menjadi ACTIVE.`,
+  });
+
   return { success: true, data: rental };
 }
 
@@ -111,7 +140,7 @@ export async function confirmVehicleHandover(
 export async function returnRental(
   rentalId: string,
   actualReturnDate: string,
-  notes?: string
+  notes?: string,
 ): Promise<{ success: boolean; data?: RentalRecord }> {
   initLocalStorage();
   const rental = cachedRentals.find((r) => r.id === rentalId);
@@ -123,7 +152,16 @@ export async function returnRental(
     rental.notes = `${rental.notes ? rental.notes + " | " : ""}Return note: ${notes}`;
   }
   rental.updatedAt = new Date().toISOString().split("T")[0];
-
   persistLocalStorage();
+
+  await recordAuditLog({
+    actorName: "Return QC Officer",
+    entityType: "RENTAL",
+    entityId: rentalId,
+    action: "RETURN_COMPLETED",
+    newData: { status: "COMPLETED", actualReturnDate },
+    notes: `Kendaraan telah diterima kembali pada ${actualReturnDate}. ${notes || ""}`,
+  });
+
   return { success: true, data: rental };
 }

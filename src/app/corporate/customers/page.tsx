@@ -23,22 +23,9 @@ import { evaluateCustomerEligibility } from "@/lib/services/eligibility-engine";
 import {
   Building2,
   Search,
-  ExternalLink,
-  Car,
-  FileText,
   User,
   Plus,
-  Phone,
-  Mail,
-  MapPin,
-  CreditCard,
   ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  FileCheck2,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
 } from "lucide-react";
 import { getCorporateCustomers, getIndividualCustomers } from "@/lib/data/customers";
 import { CorporateCustomer, IndividualCustomer } from "@/lib/types/customer";
@@ -130,44 +117,45 @@ export default function CustomersMasterPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex rounded-lg bg-neutral-100 p-1 border border-neutral-200 max-w-md text-xs font-semibold">
-        <button
-          type="button"
-          onClick={() => setActiveTab("corporate")}
-          className={`flex-1 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeTab === "corporate"
-              ? "bg-white text-neutral-900 shadow-xs font-bold"
-              : "text-neutral-600 hover:text-neutral-900"
-          }`}
-        >
-          <Building2 className="h-3.5 w-3.5" />
-          Corporate (B2B) ({corporateCustomers.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("individual")}
-          className={`flex-1 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            activeTab === "individual"
-              ? "bg-white text-neutral-900 shadow-xs font-bold"
-              : "text-neutral-600 hover:text-neutral-900"
-          }`}
-        >
-          <User className="h-3.5 w-3.5" />
-          Individual (B2C) ({individualCustomers.length})
-        </button>
-      </div>
-
-      {/* Main Table */}
+      {/* Main Table with Inline Filter Tabs and Search Bar */}
       <Card className="border-neutral-200 shadow-xs">
-        <CardHeader className="p-4 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="relative w-full max-w-md">
+        <CardHeader className="p-3.5 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Segmented Filter Pills */}
+          <div className="flex rounded-lg bg-neutral-100 p-1 border border-neutral-200 shrink-0 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setActiveTab("corporate")}
+              className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === "corporate"
+                  ? "bg-white text-neutral-900 shadow-xs font-bold"
+                  : "text-neutral-600 hover:text-neutral-900"
+              }`}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Corporate B2B ({corporateCustomers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("individual")}
+              className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeTab === "individual"
+                  ? "bg-white text-neutral-900 shadow-xs font-bold"
+                  : "text-neutral-600 hover:text-neutral-900"
+              }`}
+            >
+              <User className="h-3.5 w-3.5" />
+              Individual B2C ({individualCustomers.length})
+            </button>
+          </div>
+
+          {/* Search Box Inline */}
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-neutral-400" />
             <Input
-              placeholder={activeTab === "corporate" ? "Cari nama PT, PIC, kota..." : "Cari nama customer, nomor HP..."}
+              placeholder={activeTab === "corporate" ? "Cari nama PT, PIC, kota..." : "Cari nama customer, HP..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 text-xs bg-neutral-50"
+              className="pl-8 h-8 text-xs bg-neutral-50"
             />
           </div>
         </CardHeader>
@@ -190,64 +178,95 @@ export default function CustomersMasterPage() {
               {activeTab === "corporate" ? (
                 filteredCorp.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-neutral-500 text-xs">
-                      Tidak ada data corporate customer yang cocok.
+                    <TableCell colSpan={8} className="text-center py-10 text-neutral-500 text-xs">
+                      Tidak ada data customer corporate yang sesuai.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredCorp.map((corp, index) => {
-                    const eligibility = evaluateCustomerEligibility(corp);
-                    const verifiedDocsCount = (corp.documents || []).filter((d) => d.verificationStatus === "VERIFIED").length;
-                    const totalReqDocs = (corp.documents || []).filter((d) => d.isRequired).length;
-                    const latestAgreement = (corp.agreements || [])[0];
+                  filteredCorp.map((c, idx) => {
+                    const eligibility = evaluateCustomerEligibility(c);
+                    const verifiedDocsCount = (c.documents || []).filter(
+                      (d) => d.verificationStatus === "VERIFIED"
+                    ).length;
+                    const totalRequiredDocs = (c.documents || []).filter(
+                      (d) => d.isRequired
+                    ).length;
 
                     return (
-                      <TableRow key={corp.id} className="text-xs hover:bg-neutral-50/60 transition-colors">
-                        <TableCell className="font-mono text-center text-neutral-500 font-bold">
-                          {index + 1}
+                      <TableRow key={c.id} className="text-xs hover:bg-neutral-50/60">
+                        <TableCell className="text-center font-mono font-bold text-neutral-500">
+                          {idx + 1}
                         </TableCell>
                         <TableCell>
                           <div className="space-y-0.5">
-                            <span className="font-bold text-neutral-900 block">{corp.name}</span>
-                            <span className="text-[11px] text-neutral-500 block">
-                              {corp.companyInfo?.industry || "Corporate"} &middot; {corp.companyInfo?.city || "Jakarta"}
+                            <Link
+                              href={`/corporate/customers/${c.id}`}
+                              className="font-bold text-neutral-900 hover:text-primary hover:underline block"
+                            >
+                              {c.name}
+                            </Link>
+                            <span className="text-[10px] text-neutral-500 flex items-center gap-1 font-mono">
+                              <Building2 className="h-3 w-3 text-neutral-400" />
+                              {c.companyInfo?.legalName || c.name} &middot; {c.id}
                             </span>
                           </div>
                         </TableCell>
+
                         <TableCell>
-                          <div className="space-y-0.5 text-[11px] text-neutral-600">
-                            <div>PIC: <strong>{corp.pic?.name || "PIC"}</strong></div>
-                            <div className="text-neutral-500">{corp.pic?.phone}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {getLifecycleBadge(corp.status)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5 text-neutral-400" />
-                            <span className={`font-mono font-bold text-[11px] ${verifiedDocsCount >= totalReqDocs && totalReqDocs > 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                              {verifiedDocsCount}/{totalReqDocs} Verified
+                          <div className="space-y-0.5 text-[11px]">
+                            <span className="font-semibold text-neutral-800 block">
+                              PIC: {c.pic?.name || "-"}
+                            </span>
+                            <span className="text-neutral-500 font-mono block">
+                              {c.pic?.phone || "-"}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 font-mono">
+                              NPWP: {c.companyInfo?.npwp || "-"}
                             </span>
                           </div>
                         </TableCell>
+
+                        <TableCell>{getLifecycleBadge(c.status)}</TableCell>
+
                         <TableCell>
-                          {latestAgreement ? (
-                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              MSA v{latestAgreement.agreementVersion} ✓
+                          <div className="space-y-1">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                                verifiedDocsCount >= totalRequiredDocs && totalRequiredDocs > 0
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {verifiedDocsCount}/{totalRequiredDocs} Verified
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          {(c.agreements || []).length > 0 ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                              MSA v{(c.agreements || [])[0].agreementVersion} ✓
                             </span>
                           ) : (
-                            <span className="text-[10px] text-neutral-400 italic">Belum T&C</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                              Belum TTD
+                            </span>
                           )}
                         </TableCell>
+
                         <TableCell>
                           <EligibilityBadge eligibility={eligibility} size="sm" />
                         </TableCell>
+
                         <TableCell className="text-right">
-                          <Link href={`/corporate/customers/${corp.id}`}>
-                            <Button variant="outline" size="sm" className="h-7 text-xs gap-1 font-semibold">
-                              Review KYC
-                              <ExternalLink className="h-3 w-3" />
+                          <Link href={`/corporate/customers/${c.id}`}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs font-semibold gap-1 bg-white hover:bg-neutral-50"
+                            >
+                              <ShieldCheck className="h-3 w-3 text-primary" />
+                              Audit KYC
                             </Button>
                           </Link>
                         </TableCell>
@@ -255,91 +274,118 @@ export default function CustomersMasterPage() {
                     );
                   })
                 )
+              ) : filteredIndiv.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-neutral-500 text-xs">
+                    Tidak ada data customer perorangan yang sesuai.
+                  </TableCell>
+                </TableRow>
               ) : (
-                filteredIndiv.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-neutral-500 text-xs">
-                      Tidak ada data individual customer yang cocok.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredIndiv.map((indiv, index) => {
-                    const eligibility = evaluateCustomerEligibility(indiv);
-                    const verifiedDocsCount = (indiv.documents || []).filter((d) => d.verificationStatus === "VERIFIED").length;
-                    const totalReqDocs = (indiv.documents || []).filter((d) => d.isRequired).length;
-                    const latestAgreement = (indiv.agreements || [])[0];
+                filteredIndiv.map((c, idx) => {
+                  const eligibility = evaluateCustomerEligibility(c);
+                  const verifiedDocsCount = (c.documents || []).filter(
+                    (d) => d.verificationStatus === "VERIFIED"
+                  ).length;
+                  const totalRequiredDocs = (c.documents || []).filter(
+                    (d) => d.isRequired
+                  ).length;
 
-                    return (
-                      <TableRow key={indiv.id} className="text-xs hover:bg-neutral-50/60 transition-colors">
-                        <TableCell className="font-mono text-center text-neutral-500 font-bold">
-                          {index + 1}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-neutral-900 block">{indiv.name}</span>
-                            <span className="text-[11px] text-neutral-500 font-mono">
-                              NIK: {indiv.nik}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5 text-[11px] text-neutral-600">
-                            <div>{indiv.phone}</div>
-                            <div className="text-neutral-400">{indiv.city}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {getLifecycleBadge(indiv.status)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1">
-                              <span className={`font-mono font-bold text-[11px] ${verifiedDocsCount >= totalReqDocs && totalReqDocs > 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                                {verifiedDocsCount}/{totalReqDocs} Verified
-                              </span>
-                            </div>
-                            {indiv.drivingInfo && (
-                              <span className={`text-[10px] block font-mono ${indiv.drivingInfo.verificationStatus === "EXPIRED" ? "text-rose-600 font-bold" : "text-neutral-400"}`}>
-                                SIM: {indiv.drivingInfo.licenseExpiry}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {latestAgreement ? (
-                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              T&C v{latestAgreement.agreementVersion} ✓
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-neutral-400 italic">Belum T&C</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <EligibilityBadge eligibility={eligibility} size="sm" />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Link href={`/corporate/customers/${indiv.id}`}>
-                            <Button variant="outline" size="sm" className="h-7 text-xs gap-1 font-semibold">
-                              Review KYC
-                              <ExternalLink className="h-3 w-3" />
-                            </Button>
+                  return (
+                    <TableRow key={c.id} className="text-xs hover:bg-neutral-50/60">
+                      <TableCell className="text-center font-mono font-bold text-neutral-500">
+                        {idx + 1}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-0.5">
+                          <Link
+                            href={`/corporate/customers/${c.id}`}
+                            className="font-bold text-neutral-900 hover:text-primary hover:underline block"
+                          >
+                            {c.name}
                           </Link>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )
+                          <span className="text-[10px] text-neutral-400 font-mono">
+                            NIK: {c.nik} &middot; {c.id}
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="space-y-0.5 text-[11px]">
+                          <span className="font-semibold text-neutral-800 font-mono block">
+                            {c.phone}
+                          </span>
+                          <span className="text-neutral-500 block truncate max-w-[150px]">
+                            {c.email}
+                          </span>
+                          {c.drivingInfo && (
+                            <span className="text-[10px] font-mono text-neutral-600 block">
+                              SIM Exp: {c.drivingInfo.licenseExpiry}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      <TableCell>{getLifecycleBadge(c.status)}</TableCell>
+
+                      <TableCell>
+                        <div className="space-y-1">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                              verifiedDocsCount >= totalRequiredDocs && totalRequiredDocs > 0
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {verifiedDocsCount}/{totalRequiredDocs} Verified
+                          </span>
+                        </div>
+                      </TableCell>
+
+                      <TableCell>
+                        {(c.agreements || []).length > 0 ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                            T&C v{(c.agreements || [])[0].agreementVersion} ✓
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                            Belum TTD
+                          </span>
+                        )}
+                      </TableCell>
+
+                      <TableCell>
+                        <EligibilityBadge eligibility={eligibility} size="sm" />
+                      </TableCell>
+
+                      <TableCell className="text-right">
+                        <Link href={`/corporate/customers/${c.id}`}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs font-semibold gap-1 bg-white hover:bg-neutral-50"
+                          >
+                            <ShieldCheck className="h-3 w-3 text-primary" />
+                            Audit KYC
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
+      {/* Inline Onboarding Modal */}
       <AddCustomerModal
         open={isAddModalOpen}
         onOpenChange={setIsAddModalOpen}
+        onCustomerCreated={async () => {
+          await loadData();
+        }}
         defaultType={activeTab === "corporate" ? "CORPORATE" : "INDIVIDUAL"}
-        onCustomerCreated={() => loadData()}
       />
     </div>
   );

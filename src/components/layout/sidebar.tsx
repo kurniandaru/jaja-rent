@@ -9,6 +9,7 @@ import {
   Building2,
   FileText,
   Calendar,
+  CalendarDays,
   Wrench,
   ClipboardCheck,
   FileCheck2,
@@ -19,6 +20,7 @@ import {
   User,
   Layers,
   KeyRound,
+  Radio,
   LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -71,11 +73,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           href: "/corporate/customers",
           icon: User,
         },
-        {
-          name: "Corporate Customers",
-          href: "/corporate/customers",
-          icon: Building2,
-        },
       ],
     },
     {
@@ -103,8 +100,27 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       ],
     },
     {
+      title: "SCHEDULE",
+      items: [
+        {
+          name: "Schedule (Jadwal)",
+          href: "/schedule",
+          icon: CalendarDays,
+          badge: "6 Events",
+        },
+      ],
+    },
+    {
       title: "FLEET",
       items: [
+        {
+          name: "Command Center",
+          href: "/operations/command-center",
+          icon: Radio,
+          badge: "Live",
+          badgeVariant: "critical",
+          isLive: true,
+        },
         {
           name: "Vehicles",
           href: "/fleet",
@@ -218,10 +234,23 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             )}
             <div className="space-y-0.5">
               {section.items.map((item, itemIdx) => {
-                const isActive =
-                  item.href === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.href.split("?")[0]);
+                let isActive = false;
+                if (item.href === "/") {
+                  isActive = pathname === "/";
+                } else if (item.href === "/fleet") {
+                  isActive =
+                    (pathname === "/fleet" || pathname.startsWith("/fleet/")) &&
+                    !pathname.startsWith("/fleet/schedule");
+                } else if (
+                  item.href === "/schedule" ||
+                  item.href === "/fleet/schedule"
+                ) {
+                  isActive =
+                    pathname.startsWith("/schedule") ||
+                    pathname.startsWith("/fleet/schedule");
+                } else {
+                  isActive = pathname.startsWith(item.href.split("?")[0]);
+                }
 
                 const Icon = item.icon;
 

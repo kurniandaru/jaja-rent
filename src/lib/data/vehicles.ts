@@ -1,11 +1,38 @@
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { mockVehicles } from "@/lib/mock-data/vehicles";
+import { getSupabaseBrowserClient } from "../supabase/client.ts";
+import { mockVehicles } from "../mock-data/vehicles.ts";
 import {
+  phase2SeedVehicles,
+  phase2SeedAllocations,
+  phase2SeedDamages,
+  phase2SeedDocuments,
+} from "../mock-data/phase2-seed.ts";
+import type {
   Vehicle,
   VehicleStatus,
   OwnershipType,
   BusinessEligibility,
-} from "@/lib/types/fleet";
+} from "../types/fleet.ts";
+import type {
+  VehicleAllocationRecord,
+  VehicleDamageRecord,
+  VehicleDocumentWithAlert,
+} from "../types/fleet-operations.ts";
+import { recordAuditLog } from "../services/audit-service.ts";
+
+// Global cache for Phase 2 fleet operations
+const cachedVehicles: Vehicle[] = [
+  ...phase2SeedVehicles,
+  ...mockVehicles.filter(
+    (mv) =>
+      !phase2SeedVehicles.some(
+        (pv) => pv.id === mv.id || pv.plateNumber === mv.plateNumber,
+      ),
+  ),
+];
+
+let cachedAllocations: VehicleAllocationRecord[] = [...phase2SeedAllocations];
+let cachedDamages: VehicleDamageRecord[] = [...phase2SeedDamages];
+const cachedDocuments: VehicleDocumentWithAlert[] = [...phase2SeedDocuments];
 
 export interface VehicleFilterParams {
   ownership?: string;
@@ -94,7 +121,7 @@ export async function getVehicles(
   }
 
   // Fallback to local rich dataset
-  let result = [...mockVehicles];
+  let result = [...cachedVehicles];
 
   if (params?.ownership && params.ownership !== "ALL") {
     result = result.filter((v) => v.ownership === params.ownership);
@@ -189,7 +216,7 @@ export async function getVehicleById(
   }
 
   // Fallback
-  const found = mockVehicles.find(
+  const found = cachedVehicles.find(
     (v) =>
       v.id.toLowerCase() === idOrPlate.toLowerCase() ||
       v.plateNumber.replace(/\s+/g, "-").toLowerCase() ===
@@ -197,7 +224,7 @@ export async function getVehicleById(
       v.plateNumber.toLowerCase() === idOrPlate.toLowerCase(),
   );
 
-  return found || mockVehicles[0];
+  return found || cachedVehicles[0];
 }
 
 export async function getFleetSummary(): Promise<{
@@ -252,4 +279,88 @@ export async function getFleetSummary(): Promise<{
     jajaOwned: 80,
     vendorOwned: 40,
   };
+}
+
+/**
+ * Phase 2 Operational Mutators & Getters
+ */
+export async function updateVehicleStatusAction(
+  vehicleId: string,
+  newStatus: VehicleStatus,
+  actorName: string,
+  notes?: string,
+): Promise<{ success: boolean; vehicle?: Vehicle }> {
+  const v = cachedVehicles.find(
+    (item) =>
+      item.id.toLowerCase() === vehicleId.toLowerCase() ||
+      item.plateNumber.toLowerCase() === vehicleId.toLowerCase(),
+  );
+  if (!v) return { success: false };
+
+  const oldStatus = v.status;
+  v.status = newStatus;
+
+  await recordAuditLog({
+    actorName,
+    entityType: "VEHICLE",
+    entityId: v.id,
+    action: `VEHICLE_STATUS_${newStatus}`,
+    oldData: { status: oldStatus },
+    newData: { status: newStatus },
+    notes:
+      notes ||
+      `Status kendaraan ${v.plateNumber} diubah ke ${newStatus} oleh ${actorName}`,
+  });
+
+  return { success: true, vehicle: v };
+}
+
+export async function getAllocationsForVehicle(
+  vehicleId: string,
+): Promise<VehicleAllocationRecord[]> {
+  return cachedAllocations.filter(
+    (a) => a.vehicleId.toLowerCase() === vehicleId.toLowerCase(),
+  );
+}
+
+export async function getDamagesForVehicle(
+  vehicleId: string,
+): Promise<VehicleDamageRecord[]> {
+  return cachedDamages.filter(
+    (d) => d.vehicleId.toLowerCase() === vehicleId.toLowerCase(),
+  );
+}
+
+export async function getDocumentsForVehicle(
+  vehicleId: string,
+): Promise<VehicleDocumentWithAlert[]> {
+  return cachedDocuments.filter(
+    (doc) => doc.vehicleId.toLowerCase() === vehicleId.toLowerCase(),
+  );
+}
+
+export async function saveAllocation(
+  allocation: VehicleAllocationRecord,
+): Promise<{ success: boolean }> {
+  const existingIdx = cachedAllocations.findIndex(
+    (a) => a.id === allocation.id,
+  );
+  if (existingIdx >= 0) {
+    cachedAllocations[existingIdx] = allocation;
+  } else {
+    cachedAllocations = [allocation, ...cachedAllocations];
+  }
+  return { success: true };
+}
+
+export async function saveDamage(
+  damage: VehicleDamageRecord,
+): Promise<{ success: boolean }> {
+  const existingIdx = cachedDamages.findIndex((d) => d.id === damage.id);
+  if (existingIdx >= 0) {
+    cachedDamages[existingIdx] = damage;
+  } else {
+    cachedDamages = [damage, ...cachedDamages];
+  }
+  return { success: true };
 }

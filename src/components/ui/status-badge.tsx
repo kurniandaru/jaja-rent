@@ -75,9 +75,25 @@ export function StatusBadge({
       dotColor = "bg-rose-500";
       break;
 
+    case "ALLOCATED":
+      styleClasses = "bg-sky-50 text-sky-700 border-sky-200/80";
+      dotColor = "bg-sky-500";
+      break;
+
+    case "QC":
+    case "QC_PENDING":
+      styleClasses = "bg-purple-50 text-purple-700 border-purple-200/80";
+      dotColor = "bg-purple-500";
+      break;
+
     case "INSPECTION":
       styleClasses = "bg-indigo-50 text-indigo-700 border-indigo-200/80";
       dotColor = "bg-indigo-500";
+      break;
+
+    case "RETURNED":
+      styleClasses = "bg-amber-50 text-amber-800 border-amber-200/80";
+      dotColor = "bg-amber-500";
       break;
 
     case "DOCUMENT_HOLD":

@@ -1,10 +1,14 @@
-import { OwnershipType } from "./fleet";
-import { VendorQuotation, NegotiationTerms } from "./sourcing";
+import type { OwnershipType } from "./fleet";
+import type { VendorQuotation, NegotiationTerms } from "./sourcing";
 
 export type RentalType = "B2C" | "B2B";
 
 export type ReservationStatus =
   | "DRAFT"
+  | "PENDING_CUSTOMER_VERIFICATION"
+  | "PENDING_APPROVAL"
+  | "APPROVED"
+  | "REJECTED"
   | "PENDING"
   | "CONFIRMED"
   | "PROCESSING"
@@ -19,6 +23,8 @@ export type RentalStatus =
   | "HANDOVER"
   | "ACTIVE"
   | "RETURN"
+  | "RETURNING"
+  | "SETTLEMENT"
   | "COMPLETED"
   | "UPCOMING"
   | "CANCELLED"

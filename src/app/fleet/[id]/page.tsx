@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Car,
@@ -20,12 +21,22 @@ import {
   ChevronLeft,
   ExternalLink,
   FileText,
+  Calendar,
+  Clock,
+  Radio,
+  Plus,
+  ArrowRight,
+  ShieldAlert,
+  Sliders,
+  DollarSign,
+  Camera,
+  Layers,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { OwnershipBadge } from "@/components/ui/priority-badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableHeader,
@@ -42,83 +53,476 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ActionBlockerBanner } from "@/components/common/action-blocker-banner";
+import { ActivityTimelineCard } from "@/components/common/activity-timeline-card";
 import {
-  mockVehicles,
-  mockRentals,
-  mockInspections,
-  mockMaintenance,
-  mockDocuments,
-  mockVehicleHistories,
   getVehicleById,
-} from "@/lib/data";
-import { formatRupiah, formatNumber, formatDate } from "@/lib/utils";
+  getAllocationsForVehicle,
+  getDamagesForVehicle,
+  getDocumentsForVehicle,
+  updateVehicleStatusAction,
+  saveAllocation,
+  saveDamage,
+} from "@/lib/data/vehicles";
+import { Vehicle } from "@/lib/types/fleet";
+import {
+  VehicleAllocationRecord,
+  VehicleDamageRecord,
+  VehicleDocumentWithAlert,
+  VehicleConditionArea,
+  ConditionSeverity,
+} from "@/lib/types/fleet-operations";
+import {
+  getVehicleAvailability,
+  allocateVehicleAction,
+  releaseVehicleAllocationAction,
+} from "@/lib/services/fleet-availability-service";
+import {
+  evaluateHandoverEligibility,
+  executeVehicleHandoverAction,
+  returnVehicleAction,
+  recordVehicleDamageAction,
+} from "@/lib/services/fleet-inspection-service";
+import {
+  sendVehicleToMaintenanceAction,
+  completeMaintenanceWorkAction,
+  performMaintenanceQCAction,
+} from "@/lib/services/fleet-maintenance-service";
+import { calculateDocumentAlert } from "@/lib/services/vehicle-timeline-service";
+import { formatNumber, formatRupiah, formatDate } from "@/lib/utils";
+import { mockRentals, mockInspections, mockMaintenance } from "@/lib/data";
+
+// Dynamic import Leaflet GPS History Map
+const VehicleGPSHistoryMap = dynamic(
+  () =>
+    import("@/components/fleet/vehicle-gps-history-map").then(
+      (mod) => mod.VehicleGPSHistoryMap,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-[380px] flex flex-col items-center justify-center bg-neutral-100 text-neutral-500 rounded-xl gap-2">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <span className="text-xs font-medium">
+          Memuat peta pelacak GPS historis...
+        </span>
+      </div>
+    ),
+  },
+);
+
+import { VehicleTelematicsTab } from "@/components/telematics/vehicle-telematics-tab";
 
 export default function VehicleDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const vehicleId = (params.id as string) || "B-1234-XYZ";
 
+  const [vehicle, setVehicle] = React.useState<Vehicle | null>(null);
+  const [allocations, setAllocations] = React.useState<
+    VehicleAllocationRecord[]
+  >([]);
+  const [damages, setDamages] = React.useState<VehicleDamageRecord[]>([]);
+  const [documents, setDocuments] = React.useState<VehicleDocumentWithAlert[]>(
+    [],
+  );
+  const [loading, setLoading] = React.useState(true);
+
+  // 9 Structured Tabs as specified in Section 24
   const [activeTab, setActiveTab] = React.useState<
-    "overview" | "rental" | "gps" | "inspection" | "maintenance" | "documents" | "history"
+    | "overview"
+    | "rental"
+    | "allocation"
+    | "inspection"
+    | "damage"
+    | "maintenance"
+    | "documents"
+    | "gps"
+    | "timeline"
   >("overview");
 
-  const [isInspectionModalOpen, setIsInspectionModalOpen] = React.useState(false);
-  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = React.useState(false);
+  // Operational Action Modal States (Section 26 - No arbitrary dropdown)
+  const [isAllocateModalOpen, setIsAllocateModalOpen] = React.useState(false);
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = React.useState(false);
+  const [isReturnModalOpen, setIsReturnModalOpen] = React.useState(false);
+  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] =
+    React.useState(false);
+  const [isCompleteMntModalOpen, setIsCompleteMntModalOpen] =
+    React.useState(false);
+  const [isQCModalOpen, setIsQCModalOpen] = React.useState(false);
+  const [isAddDamageModalOpen, setIsAddDamageModalOpen] = React.useState(false);
 
-  // Lookup vehicle
-  const vehicle =
-    mockVehicles.find(
-      (v) => v.id.toLowerCase() === vehicleId.toLowerCase() || v.plateNumber.replace(/\s+/g, "-").toLowerCase() === vehicleId.toLowerCase()
-    ) || mockVehicles[0];
+  // Form states for modals
+  const [allocStart, setAllocStart] = React.useState("2026-09-10");
+  const [allocEnd, setAllocEnd] = React.useState("2026-09-13");
+  const [allocOperator, setAllocOperator] = React.useState(
+    "Ops Dispatcher Budi",
+  );
 
-  // Lookup related operational data
-  const vehicleRentals = mockRentals.filter((r) => r.vehicleId === vehicle.id || r.vehiclePlate === vehicle.plateNumber);
-  const vehicleInspections = mockInspections.filter((i) => i.vehicleId === vehicle.id || i.plateNumber === vehicle.plateNumber);
-  const vehicleMaintenance = mockMaintenance.filter((m) => m.vehicleId === vehicle.id || m.plateNumber === vehicle.plateNumber);
-  const vehicleDocs = mockDocuments.filter((d) => d.vehicleId === vehicle.id || d.plateNumber === vehicle.plateNumber);
-  const vehicleHistoryEvents = mockVehicleHistories[vehicle.id] || mockVehicleHistories["B-1234-XYZ"] || [];
+  const [handoverLocation, setHandoverLocation] = React.useState(
+    "Pool Pusat SCBD Lot 8",
+  );
+  const [handoverOdometer, setHandoverOdometer] = React.useState(14500);
+  const [handoverFuel, setHandoverFuel] = React.useState(100);
 
-  // Maintenance distance calculations
-  const nextServiceOdo = vehicle.nextServiceOdometer || vehicle.odometer + 3000;
-  const lastServiceOdo = vehicleMaintenance[0]?.odometer || vehicle.odometer - 2421;
-  const totalServiceInterval = nextServiceOdo - lastServiceOdo;
-  const currentIntervalProgress = Math.max(0, vehicle.odometer - lastServiceOdo);
-  const progressPercent = Math.min(100, Math.round((currentIntervalProgress / totalServiceInterval) * 100)) || 75;
-  const kmRemaining = Math.max(0, nextServiceOdo - vehicle.odometer);
+  const [returnOdometer, setReturnOdometer] = React.useState(15200);
+  const [returnNotes, setReturnNotes] = React.useState(
+    "Pengembalian unit selesai tanpa keluhan mesin",
+  );
+
+  const [mntWorkshop, setMntWorkshop] = React.useState(
+    "Bengkel Resmi Toyota Auto2000",
+  );
+  const [mntType, setMntType] = React.useState("Servis Berkala & Ganti Oli");
+  const [mntDesc, setMntDesc] = React.useState(
+    "Tune up mesin, ganti filter oli, pembersihan rem",
+  );
+
+  const [damageArea, setDamageArea] =
+    React.useState<VehicleConditionArea>("BODY");
+  const [damageDesc, setDamageDesc] = React.useState("");
+  const [damageSeverity, setDamageSeverity] =
+    React.useState<ConditionSeverity>("MINOR");
+  const [damageCost, setDamageCost] = React.useState(250000);
+
+  const [actionNotice, setActionNotice] = React.useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const loadVehicleData = React.useCallback(async () => {
+    setLoading(true);
+    const v = await getVehicleById(vehicleId);
+    if (v) {
+      setVehicle({ ...v });
+      setHandoverOdometer(v.odometer);
+      setReturnOdometer(v.odometer + 450);
+      const allocs = await getAllocationsForVehicle(v.id);
+      const dmgs = await getDamagesForVehicle(v.id);
+      const docs = await getDocumentsForVehicle(v.id);
+      setAllocations(allocs);
+      setDamages(dmgs);
+      setDocuments(docs);
+    }
+    setLoading(false);
+  }, [vehicleId]);
+
+  React.useEffect(() => {
+    loadVehicleData();
+  }, [loadVehicleData]);
+
+  if (loading || !vehicle) {
+    return (
+      <div className="p-12 text-center text-xs text-neutral-400">
+        Memuat detail operasional kendaraan...
+      </div>
+    );
+  }
+
+  // Related operational mock items
+  const vehicleRentals = mockRentals.filter(
+    (r) => r.vehicleId === vehicle.id || r.vehiclePlate === vehicle.plateNumber,
+  );
+  const vehicleInspections = mockInspections.filter(
+    (i) => i.vehicleId === vehicle.id || i.plateNumber === vehicle.plateNumber,
+  );
+  const vehicleMaintenance = mockMaintenance.filter(
+    (m) => m.vehicleId === vehicle.id || m.plateNumber === vehicle.plateNumber,
+  );
+
+  // Latest pre-rental inspection
+  const latestPreInspection = vehicleInspections.find(
+    (i) => i.type === "PRE_RENTAL",
+  ) || {
+    id: "INSP-PRE-001",
+    type: "PRE_RENTAL",
+    result: "PASSED" as const,
+  };
+
+  // Check Availability for allocation
+  const availability = getVehicleAvailability(
+    vehicle,
+    allocStart,
+    allocEnd,
+    allocations.map((a) => ({
+      id: a.id,
+      vehicleId: a.vehicleId,
+      sourceType: "ALLOCATION",
+      startDate: a.startAt,
+      endDate: a.endAt,
+      status: a.status,
+    })),
+  );
+
+  // Check Handover Blocker
+  const handoverEligibility = evaluateHandoverEligibility(
+    vehicle,
+    vehicleRentals[0] || ({ vehicleId: vehicle.id } as any),
+    latestPreInspection,
+  );
+
+  // Handle Operational Actions
+  const handleAllocate = async () => {
+    const res = await allocateVehicleAction(
+      vehicle,
+      allocStart,
+      allocEnd,
+      allocOperator,
+      undefined,
+      undefined,
+      allocations.map((a) => ({
+        id: a.id,
+        vehicleId: a.vehicleId,
+        sourceType: "ALLOCATION",
+        startDate: a.startAt,
+        endDate: a.endAt,
+        status: a.status,
+      })),
+    );
+
+    if (res.success && res.allocation) {
+      await saveAllocation(res.allocation);
+      setIsAllocateModalOpen(false);
+      setActionNotice({
+        type: "success",
+        message: `Unit ${vehicle.plateNumber} berhasil dialokasikan (${res.allocation.allocationNumber}). Status menjadi ALLOCATED.`,
+      });
+      loadVehicleData();
+    } else {
+      setActionNotice({
+        type: "error",
+        message: res.error || "Gagal mengalokasikan unit.",
+      });
+    }
+  };
+
+  const handleHandover = async () => {
+    const dummyRental = vehicleRentals[0] || {
+      id: "RNT-ACT-001",
+      vehicleId: vehicle.id,
+      vehiclePlate: vehicle.plateNumber,
+      status: "RESERVED",
+    };
+
+    const res = await executeVehicleHandoverAction(
+      vehicle,
+      dummyRental as any,
+      {
+        handoverLocation,
+        odometer: Number(handoverOdometer),
+        fuelLevel: Number(handoverFuel),
+        notes: "Serah terima kunci & BAST selesai",
+      },
+      latestPreInspection,
+      "Field Ops Hendra",
+    );
+
+    if (res.success) {
+      setIsHandoverModalOpen(false);
+      setActionNotice({
+        type: "success",
+        message: `Kendaraan ${vehicle.plateNumber} telah diserahterimakan! Status unit menjadi RENTED.`,
+      });
+      loadVehicleData();
+    } else {
+      setActionNotice({
+        type: "error",
+        message: res.error || "Gagal melakukan serah terima.",
+      });
+    }
+  };
+
+  const handleReturn = async () => {
+    const dummyRental = vehicleRentals[0] || {
+      id: "RNT-ACT-001",
+      vehicleId: vehicle.id,
+      vehiclePlate: vehicle.plateNumber,
+      status: "ACTIVE",
+    };
+
+    const res = await returnVehicleAction(
+      vehicle,
+      dummyRental as any,
+      new Date().toISOString(),
+      Number(returnOdometer),
+      "QC Lead Dimas",
+      returnNotes,
+    );
+
+    if (res.success) {
+      setIsReturnModalOpen(false);
+      setActionNotice({
+        type: "success",
+        message: `Kendaraan ${vehicle.plateNumber} diterima dari penyewa. Status menjadi INSPECTION (menunggu periksa kondisi).`,
+      });
+      loadVehicleData();
+    }
+  };
+
+  const handleSendMaintenance = async () => {
+    const res = await sendVehicleToMaintenanceAction(
+      vehicle,
+      mntType,
+      mntDesc,
+      mntWorkshop,
+      "Fleet Ops Dimas",
+    );
+
+    if (res.success) {
+      setIsMaintenanceModalOpen(false);
+      setActionNotice({
+        type: "success",
+        message: `Kendaraan ${vehicle.plateNumber} dikirim ke bengkel ${mntWorkshop}. Status unit menjadi MAINTENANCE.`,
+      });
+      loadVehicleData();
+    }
+  };
+
+  const handleCompleteMaintenance = async () => {
+    const res = await completeMaintenanceWorkAction(
+      vehicle,
+      "MNT-1001",
+      [
+        {
+          id: "1",
+          category: "OIL",
+          itemName: "Oli Mesin 0W-20",
+          quantity: 4,
+          unitCost: 165000,
+          subtotal: 660000,
+          status: "REPLACED",
+        },
+        {
+          id: "2",
+          category: "OTHER",
+          itemName: "Jasa Servis & Tune Up",
+          quantity: 1,
+          unitCost: 350000,
+          subtotal: 350000,
+          status: "OK",
+        },
+      ],
+      mntWorkshop,
+      "Kepala Bengkel Wahyu",
+    );
+
+    if (res.success) {
+      setIsCompleteMntModalOpen(false);
+      setActionNotice({
+        type: "success",
+        message: `Pekerjaan bengkel selesai! Unit sekarang dalam status pemeriksaan QC (QC_PENDING).`,
+      });
+      loadVehicleData();
+    }
+  };
+
+  const handleQC = async (result: "PASS" | "FAIL") => {
+    const res = await performMaintenanceQCAction(
+      vehicle,
+      "MNT-1001",
+      result,
+      "QC Lead Rudi",
+      result === "PASS"
+        ? "Uji jalan & inspeksi komponen pasca-servis memenuhi standar keselamatan."
+        : "Masih ditemukan bunyi decit pada rem belakang, perlu perbaikan ulang.",
+    );
+
+    if (res.success) {
+      setIsQCModalOpen(false);
+      setActionNotice({
+        type: "success",
+        message:
+          result === "PASS"
+            ? `QC LULUS! Unit ${vehicle.plateNumber} telah kembali berstatus AVAILABLE dan siap disewakan.`
+            : `QC GAGAL. Unit ${vehicle.plateNumber} dikembalikan ke antrean bengkel (MAINTENANCE).`,
+      });
+      loadVehicleData();
+    }
+  };
+
+  const handleAddDamage = async () => {
+    if (!damageDesc) return;
+    const res = await recordVehicleDamageAction(
+      vehicle.id,
+      {
+        area: damageArea,
+        description: damageDesc,
+        severity: damageSeverity,
+        estimatedCost: Number(damageCost),
+      },
+      "Inspector Bambang",
+    );
+
+    if (res.success) {
+      await saveDamage(res.damage);
+      setIsAddDamageModalOpen(false);
+      setDamageDesc("");
+      setActionNotice({
+        type: "success",
+        message: `Kerusakan baru ${res.damage.damageNumber} (${damageArea}) berhasil dicatat di buku besar kerusakan.`,
+      });
+      loadVehicleData();
+    }
+  };
 
   return (
     <div className="space-y-6 pb-16">
-      {/* Back button & quick navigation */}
+      {/* Top Breadcrumb */}
       <div className="flex items-center justify-between">
         <Link
           href="/fleet"
           className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-900 transition-colors"
         >
-          <ChevronLeft className="h-4 w-4" /> Back to Fleet Registry
+          <ChevronLeft className="h-4 w-4" /> Kembali ke Fleet Command Center
         </Link>
         <span className="text-xs font-mono text-neutral-400">
-          ID: {vehicle.id} &middot; VIN: {vehicle.vin}
+          Unit ID: {vehicle.id} &middot; VIN: {vehicle.vin}
         </span>
       </div>
 
-      {/* Vehicle Hero Header */}
-      <div className="rounded-lg border border-neutral-200 bg-white p-5 sm:p-6 shadow-xs">
+      {/* Action Notification Banner */}
+      {actionNotice && (
+        <div
+          className={`p-3.5 rounded-xl border flex items-center justify-between text-xs font-medium ${
+            actionNotice.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+              : "bg-rose-50 border-rose-200 text-rose-900"
+          }`}
+        >
+          <span>{actionNotice.message}</span>
+          <button
+            onClick={() => setActionNotice(null)}
+            className="text-[11px] font-bold underline ml-4 hover:opacity-80"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
+      {/* Hero Header Card */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900">
                 {vehicle.plateNumber}
               </h1>
               <OwnershipBadge ownership={vehicle.ownership} />
               <StatusBadge status={vehicle.status} />
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-900 text-white uppercase font-mono">
+                {vehicle.lifecycleStatus || "ACTIVE"}
+              </span>
               {vehicle.businessEligibility && (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-neutral-100 text-neutral-700 uppercase">
-                  {vehicle.businessEligibility === "BOTH" ? "B2C & B2B" : vehicle.businessEligibility}
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-700 uppercase border border-neutral-200">
+                  {vehicle.businessEligibility === "BOTH"
+                    ? "B2C & B2B"
+                    : vehicle.businessEligibility}
                 </span>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">
-              <span className="font-medium text-neutral-900 text-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600">
+              <span className="font-bold text-neutral-900 text-sm">
                 {vehicle.brand} {vehicle.model} ({vehicle.year})
               </span>
               <span className="text-neutral-300">•</span>
@@ -128,93 +532,89 @@ export default function VehicleDetailPage() {
               <span className="text-neutral-300">•</span>
               <span>{vehicle.fuelType}</span>
               <span className="text-neutral-300">•</span>
-              <span className="font-mono font-medium text-neutral-800">
+              <span className="font-mono font-bold text-neutral-800">
                 {formatNumber(vehicle.odometer)} KM
               </span>
             </div>
-
-            {vehicle.currentCustomerName && (
-              <div className="flex items-center gap-2 pt-1 text-xs font-medium text-neutral-700">
-                <span className="text-neutral-400 font-semibold uppercase text-[10px]">
-                  Active Customer:
-                </span>
-                <span className="flex items-center gap-1 font-semibold text-neutral-900 bg-neutral-100 px-2 py-0.5 rounded">
-                  {vehicle.currentRentalType === "B2B" ? (
-                    <Building2 className="h-3 w-3 text-purple-600" />
-                  ) : (
-                    <User className="h-3 w-3 text-blue-600" />
-                  )}
-                  {vehicle.currentCustomerName}
-                </span>
-                {vehicle.currentDriverName && (
-                  <span className="text-neutral-500 text-xs">
-                    (Driver: {vehicle.currentDriverName})
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Action CTAs */}
-          <div className="flex flex-wrap items-center gap-2 self-start lg:self-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsInspectionModalOpen(true)}
-              className="gap-1.5"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
-              New Inspection
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsMaintenanceModalOpen(true)}
-              className="gap-1.5"
-            >
-              <Wrench className="h-3.5 w-3.5" />
-              Book Service
-            </Button>
-            {vehicle.status === "MAINTENANCE" && vehicle.currentContractId && (
-              <Link href={`/corporate/contracts/${vehicle.currentContractId}?action=replacement`}>
-                <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Find Replacement
-                </Button>
-              </Link>
-            )}
+          {/* Quick Context Strip */}
+          <div className="flex flex-col text-right text-xs">
+            <span className="text-neutral-400 font-medium">Lokasi Terkini</span>
+            <span className="font-bold text-neutral-900 text-sm">
+              {vehicle.locationCity}
+            </span>
+            <span className="text-[11px] text-neutral-500">
+              {vehicle.locationArea}
+            </span>
           </div>
         </div>
 
-        {/* 7 Operational Navigation Tabs */}
+        {/* 9 Structured Tabs as specified in Section 24 */}
         <div className="mt-6 flex flex-wrap border-b border-neutral-200 -mb-5 sm:-mb-6 gap-1 text-xs">
           {[
             { id: "overview", label: "Overview", icon: Car },
-            { id: "rental", label: "Rental", icon: KeyRound, count: vehicleRentals.length },
-            { id: "gps", label: "GPS Telemetry", icon: Navigation },
-            { id: "inspection", label: "Inspection", icon: ShieldCheck, count: vehicleInspections.length },
-            { id: "maintenance", label: "Maintenance", icon: Wrench, count: vehicleMaintenance.length },
-            { id: "documents", label: "Documents", icon: FileCheck2, count: vehicleDocs.length },
-            { id: "history", label: "Vehicle History", icon: History },
+            {
+              id: "rental",
+              label: "Rental History",
+              icon: KeyRound,
+              count: vehicleRentals.length,
+            },
+            {
+              id: "allocation",
+              label: "Allocation",
+              icon: Calendar,
+              count: allocations.length,
+            },
+            {
+              id: "inspection",
+              label: "Inspection",
+              icon: ShieldCheck,
+              count: vehicleInspections.length,
+            },
+            {
+              id: "damage",
+              label: "Damage",
+              icon: AlertTriangle,
+              count: damages.length,
+            },
+            {
+              id: "maintenance",
+              label: "Maintenance",
+              icon: Wrench,
+              count: vehicleMaintenance.length,
+            },
+            {
+              id: "documents",
+              label: "Documents",
+              icon: FileCheck2,
+              count: documents.length,
+            },
+            { id: "gps", label: "GPS & Telematics", icon: Navigation },
+            { id: "timeline", label: "Timeline", icon: History },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as "overview" | "rental" | "gps" | "inspection" | "maintenance" | "documents" | "history")}
-                className={`flex items-center gap-1.5 px-3 py-2.5 font-medium border-b-2 transition-all ${
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 font-medium border-b-2 transition-all cursor-pointer ${
                   isActive
-                    ? "border-neutral-900 text-neutral-900 font-semibold"
+                    ? "border-neutral-900 text-neutral-900 font-bold"
                     : "border-transparent text-neutral-500 hover:text-neutral-900 hover:border-neutral-300"
                 }`}
               >
-                <Icon className={`h-3.5 w-3.5 ${isActive ? "text-neutral-900" : "text-neutral-400"}`} />
+                <Icon
+                  className={`h-3.5 w-3.5 ${isActive ? "text-neutral-900" : "text-neutral-400"}`}
+                />
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                      isActive ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600"
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isActive
+                        ? "bg-neutral-900 text-white"
+                        : "bg-neutral-100 text-neutral-600"
                     }`}
                   >
                     {tab.count}
@@ -226,685 +626,1278 @@ export default function VehicleDetailPage() {
         </div>
       </div>
 
-      {/* Tab 1: OVERVIEW */}
+      {/* TAB 1: OVERVIEW (Answers all 8 questions from Section 24 + Action Buttons from Section 26) */}
       {activeTab === "overview" && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Vehicle Information */}
-            <Card className="border-neutral-200">
-              <CardHeader className="pb-3 border-b border-neutral-100">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Car className="h-4 w-4 text-neutral-600" />
-                  Vehicle Specification
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 divide-y divide-neutral-100 text-xs">
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Police Number</span>
-                  <span className="font-bold text-neutral-900">{vehicle.plateNumber}</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Brand / Model</span>
-                  <span className="font-medium text-neutral-900">{vehicle.brand} {vehicle.model}</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Year / Color</span>
-                  <span className="font-medium text-neutral-900">{vehicle.year} &middot; {vehicle.color}</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Transmission & Fuel</span>
-                  <span className="font-medium text-neutral-900">{vehicle.transmission} &middot; {vehicle.fuelType}</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Seat Capacity</span>
-                  <span className="font-medium text-neutral-900">{vehicle.seatCapacity} Passenger Seats</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">VIN (Chassis No.)</span>
-                  <span className="font-mono text-neutral-800">{vehicle.vin}</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Engine Number</span>
-                  <span className="font-mono text-neutral-800">{vehicle.engineNumber}</span>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <span className="text-neutral-500">Current Odometer</span>
-                  <span className="font-mono font-bold text-neutral-900">{formatNumber(vehicle.odometer)} KM</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Ownership & Business Model Compliance */}
-            <Card className="border-neutral-200">
-              <CardHeader className="pb-3 border-b border-neutral-100">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-neutral-600" />
-                  Ownership & Business Eligibility
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-4 text-xs">
-                <div className="p-3.5 rounded-lg bg-neutral-50 border border-neutral-200/70 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-500 uppercase text-[11px] font-semibold">Owner Type</span>
-                    <OwnershipBadge ownership={vehicle.ownership} />
-                  </div>
-                  {vehicle.vendorName && (
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-neutral-500">Vendor Partner</span>
-                      <span className="font-semibold text-neutral-900">{vehicle.vendorName}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Business Model Compliance Rules Box */}
-                <div className="space-y-2">
-                  <span className="text-[11px] font-semibold text-neutral-500 uppercase">
-                    Commercial Channel Eligibility
-                  </span>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div
-                      className={`p-3 rounded-md border flex items-center justify-between ${
-                        vehicle.ownership === "JAJA_OWNED"
-                          ? "bg-emerald-50/50 border-emerald-200 text-emerald-900"
-                          : "bg-neutral-100/60 border-neutral-200 text-neutral-400"
-                      }`}
-                    >
-                      <div>
-                        <div className="font-bold">B2C Rental</div>
-                        <div className="text-[10px]">Individual / Daily</div>
-                      </div>
-                      {vehicle.ownership === "JAJA_OWNED" ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-neutral-400" />
-                      )}
-                    </div>
-
-                    <div className="p-3 rounded-md border bg-emerald-50/50 border-emerald-200 text-emerald-900 flex items-center justify-between">
-                      <div>
-                        <div className="font-bold">B2B Rent-to-Rent</div>
-                        <div className="text-[10px]">Corporate Contracts</div>
-                      </div>
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    </div>
-                  </div>
-                  {vehicle.ownership === "VENDOR_OWNED" && (
-                    <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
-                      <strong>Policy Notice:</strong> Vendor-owned vehicle is strictly reserved for B2B Corporate contracts and cannot be assigned to B2C individual rentals.
-                    </p>
-                  )}
-                </div>
-
-                {/* Commercial Pricing Reference */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  {vehicle.dailyRateB2C && (
-                    <div className="p-2.5 rounded bg-neutral-50 border border-neutral-200">
-                      <span className="text-[10px] text-neutral-400 block uppercase">B2C Daily Rate</span>
-                      <span className="font-bold text-neutral-900">{formatRupiah(vehicle.dailyRateB2C)}</span>
-                    </div>
-                  )}
-                  {vehicle.monthlyRateB2B && (
-                    <div className="p-2.5 rounded bg-neutral-50 border border-neutral-200">
-                      <span className="text-[10px] text-neutral-400 block uppercase">B2B Monthly Rate</span>
-                      <span className="font-bold text-neutral-900">{formatRupiah(vehicle.monthlyRateB2B)}</span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Current Rental & Live GPS status split */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Current Rental Details */}
-            <Card className="border-neutral-200">
-              <CardHeader className="pb-3 border-b border-neutral-100 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <KeyRound className="h-4 w-4 text-neutral-600" />
-                  Current Rental Deployment
-                </CardTitle>
-                <StatusBadge status={vehicle.status} />
-              </CardHeader>
-              <CardContent className="pt-4 space-y-3 text-xs">
-                {vehicle.currentCustomerName ? (
-                  <>
-                    <div className="flex justify-between py-1.5 border-b border-neutral-100">
-                      <span className="text-neutral-500">Customer Account</span>
-                      <span className="font-bold text-neutral-900">{vehicle.currentCustomerName}</span>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-neutral-100">
-                      <span className="text-neutral-500">Rental Type</span>
-                      <span className="font-semibold text-neutral-800">{vehicle.currentRentalType}</span>
-                    </div>
-                    {vehicle.currentContractId && (
-                      <div className="flex justify-between py-1.5 border-b border-neutral-100">
-                        <span className="text-neutral-500">Contract Reference</span>
-                        <Link
-                          href={`/corporate/contracts/${vehicle.currentContractId}`}
-                          className="font-mono font-medium text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          {vehicle.currentContractId} <ExternalLink className="h-3 w-3" />
-                        </Link>
-                      </div>
-                    )}
-                    <div className="flex justify-between py-1.5 border-b border-neutral-100">
-                      <span className="text-neutral-500">Assigned Driver</span>
-                      <span className="font-medium text-neutral-900">{vehicle.currentDriverName || "Self-Drive (No Driver)"}</span>
-                    </div>
-                    <div className="flex justify-between py-1.5">
-                      <span className="text-neutral-500">Deployment Duration</span>
-                      <span className="font-mono text-neutral-800">01 Jan 2026 — 31 Dec 2026 (365 Days)</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="py-8 text-center text-neutral-400">
-                    Vehicle is currently available in pool without active deployment.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Current GPS & Location */}
-            <Card className="border-neutral-200">
-              <CardHeader className="pb-3 border-b border-neutral-100 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-neutral-600" />
-                  Current Geolocation
-                </CardTitle>
-                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  {vehicle.gpsStatus}
+        <div className="space-y-6">
+          {/* Section 26: Discrete Operational Action Buttons (No Arbitrary Dropdown!) */}
+          <Card className="border-neutral-200 bg-neutral-50/50 p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                  Operational Workflow Actions (Section 26)
                 </span>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-3 text-xs">
-                <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200/80 space-y-1">
-                  <div className="text-[10px] uppercase font-semibold text-neutral-400">Registered Zone & Area</div>
-                  <div className="font-bold text-sm text-neutral-900">{vehicle.locationCity}</div>
-                  <div className="text-neutral-600 text-xs">{vehicle.locationArea}</div>
-                </div>
+                <p className="text-xs text-neutral-600">
+                  Perubahan status unit dilakukan melalui aksi operasional resmi
+                  ber-audit trail.
+                </p>
+              </div>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-white border border-neutral-200 rounded">
+                Current: {vehicle.status}
+              </span>
+            </div>
 
-                <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                  <div className="p-2 rounded bg-neutral-50 border border-neutral-100">
-                    <span className="text-[10px] text-neutral-400 uppercase block">Speed</span>
-                    <span className="font-bold text-neutral-900 font-mono">{vehicle.speed} km/h</span>
-                  </div>
-                  <div className="p-2 rounded bg-neutral-50 border border-neutral-100">
-                    <span className="text-[10px] text-neutral-400 uppercase block">GPS Ping</span>
-                    <span className="font-medium text-neutral-800">{vehicle.lastGpsUpdate}</span>
-                  </div>
-                  <div className="p-2 rounded bg-neutral-50 border border-neutral-100">
-                    <span className="text-[10px] text-neutral-400 uppercase block">Coordinates</span>
-                    <span className="font-mono text-[11px] text-neutral-700">
-                      {vehicle.latitude.toFixed(2)}, {vehicle.longitude.toFixed(2)}
+            <div className="pt-3 flex flex-wrap gap-2">
+              <Button
+                variant={vehicle.status === "AVAILABLE" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsAllocateModalOpen(true)}
+                className="text-xs font-semibold gap-1.5"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Alokasikan Unit
+              </Button>
+
+              <Button
+                variant={
+                  vehicle.status === "ALLOCATED" ||
+                  vehicle.status === "RESERVED"
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                onClick={() => setIsHandoverModalOpen(true)}
+                className="text-xs font-semibold gap-1.5"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                Serah Terima (Handover)
+              </Button>
+
+              <Button
+                variant={vehicle.status === "RENTED" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsReturnModalOpen(true)}
+                className="text-xs font-semibold gap-1.5"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Terima Pengembalian
+              </Button>
+
+              <Button
+                variant={
+                  vehicle.status === "INSPECTION" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() => setIsMaintenanceModalOpen(true)}
+                className="text-xs font-semibold gap-1.5"
+              >
+                <Wrench className="h-3.5 w-3.5" />
+                Kirim ke Bengkel
+              </Button>
+
+              <Button
+                variant={
+                  vehicle.status === "MAINTENANCE" ? "default" : "outline"
+                }
+                size="sm"
+                onClick={() => setIsCompleteMntModalOpen(true)}
+                className="text-xs font-semibold gap-1.5"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Selesaikan Servis
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsQCModalOpen(true)}
+                className="text-xs font-semibold gap-1.5 text-emerald-800 border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                Inspeksi QC Keluar
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAddDamageModalOpen(true)}
+                className="text-xs font-semibold gap-1.5 text-rose-800 border-rose-300 bg-rose-50 hover:bg-rose-100 ml-auto"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />+ Catat
+                Kerusakan
+              </Button>
+            </div>
+          </Card>
+
+          {/* 8 Question Operational Grid (Section 24) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Current Status */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                1. Status Operasional
+              </span>
+              <div className="my-2">
+                <StatusBadge status={vehicle.status} />
+              </div>
+              <p className="text-[11px] text-neutral-500">
+                Tahap: {vehicle.lifecycleStage || vehicle.status}
+              </p>
+            </Card>
+
+            {/* 2. Current Customer & Rental */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                2. Penyewa & Rental Saat Ini
+              </span>
+              <div className="my-1">
+                {vehicle.currentCustomerName ? (
+                  <div>
+                    <span className="text-xs font-bold text-neutral-900 block truncate">
+                      {vehicle.currentCustomerName}
+                    </span>
+                    <span className="text-[10px] font-mono text-neutral-500">
+                      {vehicle.currentRentalId || "Active Contract"}
                     </span>
                   </div>
+                ) : (
+                  <span className="text-xs font-medium text-neutral-400">
+                    Tidak sedang disewa
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] text-neutral-500">
+                Tipe: {vehicle.businessEligibility}
+              </span>
+            </Card>
+
+            {/* 3. Current Location */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                3. Lokasi Keberadaan Unit
+              </span>
+              <div className="my-1 flex items-start gap-2">
+                <MapPin className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-xs font-bold text-neutral-900 block">
+                    {vehicle.locationCity}
+                  </span>
+                  <span className="text-[11px] text-neutral-500 line-clamp-1">
+                    {vehicle.locationArea}
+                  </span>
                 </div>
-              </CardContent>
+              </div>
+              <span className="text-[10px] text-neutral-400 font-mono">
+                GPS: {vehicle.latitude.toFixed(4)},{" "}
+                {vehicle.longitude.toFixed(4)}
+              </span>
+            </Card>
+
+            {/* 4. Odometer & 5. Next Service */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                4 & 5. Odometer & Jadwal Servis
+              </span>
+              <div className="my-1">
+                <span className="text-sm font-mono font-bold text-neutral-900 block">
+                  {formatNumber(vehicle.odometer)} KM
+                </span>
+                <span
+                  className={`text-[11px] font-semibold ${
+                    vehicle.odometer >= vehicle.nextServiceOdometer
+                      ? "text-rose-600"
+                      : "text-neutral-500"
+                  }`}
+                >
+                  Servis Berikutnya: {formatNumber(vehicle.nextServiceOdometer)}{" "}
+                  KM
+                </span>
+              </div>
+              <span className="text-[10px] text-neutral-400">
+                Status Servis: {vehicle.maintenanceStatus}
+              </span>
+            </Card>
+
+            {/* 6. Document Health */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                6. Kepatuhan Dokumen (STNK/KIR)
+              </span>
+              <div className="my-2">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                    vehicle.documentStatus === "OK"
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : vehicle.documentStatus === "EXPIRING_SOON"
+                        ? "bg-amber-50 text-amber-800 border border-amber-200"
+                        : "bg-rose-50 text-rose-700 border border-rose-200"
+                  }`}
+                >
+                  {vehicle.documentStatus.replace(/_/g, " ")}
+                </span>
+              </div>
+              <p className="text-[10px] text-neutral-500">
+                {documents.length} berkas legalitas terdaftar
+              </p>
+            </Card>
+
+            {/* 7. GPS Telematics Health */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                7. Kesehatan GPS Telematics
+              </span>
+              <div className="my-2 flex items-center gap-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    vehicle.gpsStatus === "ONLINE"
+                      ? "bg-emerald-500 animate-pulse"
+                      : vehicle.gpsStatus === "IDLE"
+                        ? "bg-amber-400"
+                        : "bg-rose-500"
+                  }`}
+                />
+                <span className="text-xs font-bold text-neutral-800">
+                  {vehicle.gpsStatus}
+                </span>
+                <span className="text-[10px] font-mono text-neutral-400">
+                  ({vehicle.speed} km/h)
+                </span>
+              </div>
+              <span className="text-[10px] text-neutral-500">
+                Ping: {vehicle.lastGpsUpdate}
+              </span>
+            </Card>
+
+            {/* 8. Business Rates */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                Tarif Rental
+              </span>
+              <div className="my-1">
+                <span className="text-xs font-bold text-neutral-900 block">
+                  {vehicle.dailyRateB2C
+                    ? formatRupiah(vehicle.dailyRateB2C)
+                    : "N/A"}{" "}
+                  <span className="text-[10px] font-normal text-neutral-500">
+                    / hari (B2C)
+                  </span>
+                </span>
+                <span className="text-xs font-bold text-neutral-900 block">
+                  {vehicle.monthlyRateB2B
+                    ? formatRupiah(vehicle.monthlyRateB2B)
+                    : "N/A"}{" "}
+                  <span className="text-[10px] font-normal text-neutral-500">
+                    / bln (B2B)
+                  </span>
+                </span>
+              </div>
+              <span className="text-[10px] text-neutral-400">
+                Kepemilikan: {vehicle.ownership}
+              </span>
+            </Card>
+
+            {/* 9. Kerusakan Aktif */}
+            <Card className="border-neutral-200 shadow-xs p-4 flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                Buku Besar Kerusakan
+              </span>
+              <div className="my-1">
+                <span className="text-sm font-bold text-neutral-900 block">
+                  {damages.length} Kerusakan
+                </span>
+                <span className="text-[10px] text-rose-600 font-medium">
+                  {damages.filter((d) => d.status === "OPEN").length} Open /
+                  Under Review
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveTab("damage")}
+                className="h-6 text-[10px] text-primary p-0 justify-start"
+              >
+                Lihat detail kerusakan &rarr;
+              </Button>
             </Card>
           </div>
         </div>
       )}
 
-      {/* Tab 2: RENTAL */}
+      {/* TAB 2: RENTAL HISTORY */}
       {activeTab === "rental" && (
-        <div className="space-y-5">
-          {/* Active rental highlighted banner */}
-          <Card className="border-neutral-200">
-            <CardHeader className="pb-3 border-b border-neutral-100">
-              <CardTitle className="text-sm font-semibold">Active Rental Agreement</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {vehicleRentals.filter((r) => r.status === "ACTIVE").length > 0 ? (
-                vehicleRentals
-                  .filter((r) => r.status === "ACTIVE")
-                  .map((r) => (
-                    <div key={r.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Customer</span>
-                        <span className="font-bold text-sm text-neutral-900">{r.customerName}</span>
-                        <span className="text-neutral-500 block">{r.type} Rental</span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Contract Schedule</span>
-                        <span className="font-medium text-neutral-900">
-                          {formatDate(r.startDate)} — {formatDate(r.endDate)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Driver Assigned</span>
-                        <span className="font-medium text-neutral-900">{r.driverName || "Self Drive"}</span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Contract Value</span>
-                        <span className="font-bold text-neutral-900">{formatRupiah(r.totalAmount)}</span>
-                      </div>
-                    </div>
-                  ))
-              ) : (
-                <div className="text-neutral-400 text-xs py-4">No active rental agreement in place.</div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Rental History Table */}
-          <Card className="border-neutral-200">
-            <CardHeader className="pb-3 border-b border-neutral-100">
-              <CardTitle className="text-sm font-semibold">Rental History & Dispatch Log</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
+        <Card className="border-neutral-200 shadow-xs">
+          <CardHeader className="border-b border-neutral-100 p-4">
+            <CardTitle className="text-sm font-bold text-neutral-900">
+              Riwayat Sewa & Kontrak ({vehicleRentals.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rental ID</TableHead>
+                  <TableHead>Penyewa</TableHead>
+                  <TableHead>Tipe</TableHead>
+                  <TableHead>Periode</TableHead>
+                  <TableHead>Total Biaya</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {vehicleRentals.length === 0 ? (
                   <TableRow>
-                    <TableHead className="w-12 text-center text-xs font-semibold uppercase tracking-wider">
-                      No
-                    </TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Start Date</TableHead>
-                    <TableHead>End Date</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Driver</TableHead>
-                    <TableHead>Total Amount</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableCell
+                      colSpan={6}
+                      className="h-24 text-center text-xs text-neutral-500"
+                    >
+                      Belum ada riwayat rental untuk unit ini.
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vehicleRentals.map((r, idx) => (
+                ) : (
+                  vehicleRentals.map((r) => (
                     <TableRow key={r.id}>
-                      <TableCell className="text-center font-medium text-neutral-500 text-xs">
-                        {idx + 1}
+                      <TableCell className="font-mono text-xs font-bold">
+                        {r.id}
                       </TableCell>
-                      <TableCell className="font-semibold text-neutral-900">{r.customerName}</TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {r.customerName}
+                      </TableCell>
                       <TableCell>
-                        <span className="font-medium text-neutral-700 bg-neutral-100 px-1.5 py-0.5 rounded text-[11px]">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-neutral-100 text-neutral-700">
                           {r.type}
                         </span>
                       </TableCell>
-                      <TableCell className="font-mono text-neutral-600">{formatDate(r.startDate)}</TableCell>
-                      <TableCell className="font-mono text-neutral-600">{formatDate(r.endDate)}</TableCell>
-                      <TableCell className="text-neutral-600">365 days</TableCell>
-                      <TableCell className="text-neutral-800">{r.driverName || "-"}</TableCell>
-                      <TableCell className="font-mono font-medium text-neutral-900">{formatRupiah(r.totalAmount)}</TableCell>
-                      <TableCell><StatusBadge status={r.status} /></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Tab 3: GPS */}
-      {activeTab === "gps" && (
-        <div className="space-y-5">
-          {/* Telemetry Stat Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-lg border border-neutral-200 bg-white shadow-xs">
-              <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Live Speed</span>
-              <span className="text-xl font-bold text-neutral-900 font-mono">{vehicle.speed} KM/H</span>
-            </div>
-            <div className="p-3.5 rounded-lg border border-neutral-200 bg-white shadow-xs">
-              <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Odometer</span>
-              <span className="text-xl font-bold text-neutral-900 font-mono">{formatNumber(vehicle.odometer)} KM</span>
-            </div>
-            <div className="p-3.5 rounded-lg border border-neutral-200 bg-white shadow-xs">
-              <span className="text-[10px] text-neutral-400 uppercase font-semibold block">GPS Signal</span>
-              <span className="text-xl font-bold text-emerald-600">ONLINE</span>
-            </div>
-            <div className="p-3.5 rounded-lg border border-neutral-200 bg-white shadow-xs">
-              <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Last Update</span>
-              <span className="text-sm font-semibold text-neutral-900 mt-1 block">{vehicle.lastGpsUpdate}</span>
-            </div>
-          </div>
-
-          {/* Interactive Map View with Breadcrumbs */}
-          <Card className="border-neutral-200 overflow-hidden">
-            <div className="h-72 bg-neutral-900 text-white relative flex flex-col justify-between p-4">
-              <div className="absolute inset-0 opacity-25 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
-              
-              <div className="relative z-10 flex justify-between items-center text-xs">
-                <span className="font-mono text-neutral-400">
-                  LAT: {vehicle.latitude} &middot; LNG: {vehicle.longitude}
-                </span>
-                <span className="bg-neutral-800/90 border border-neutral-700 px-2 py-1 rounded text-[11px] font-medium text-white">
-                  Zone: {vehicle.locationCity}
-                </span>
-              </div>
-
-              {/* Marker simulation */}
-              <div className="relative flex items-center justify-center my-auto">
-                <div className="flex flex-col items-center">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white shadow-lg ring-4 ring-blue-400/30 animate-pulse">
-                    <Car className="h-3 w-3" />
-                  </span>
-                  <div className="mt-2 bg-white text-neutral-900 text-xs font-bold px-2 py-1 rounded shadow-md border border-neutral-200">
-                    {vehicle.plateNumber} ({vehicle.speed} km/h)
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative z-10 bg-neutral-950/80 p-2.5 rounded border border-neutral-800 text-xs text-neutral-300 flex justify-between">
-                <span>Address: {vehicle.locationArea}, {vehicle.locationCity}</span>
-                <span className="text-neutral-400 font-mono">Heading: North-East</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Tab 4: INSPECTION */}
-      {activeTab === "inspection" && (
-        <div className="space-y-5">
-          {/* Latest Inspection Banner */}
-          <Card className="border-neutral-200">
-            <CardHeader className="pb-3 border-b border-neutral-100 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold">Latest Inspection Report</CardTitle>
-                <p className="text-xs text-neutral-500">Conducted on 01 Sep 2026 by Ahmad Subarjo</p>
-              </div>
-              <StatusBadge status="PASSED" />
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-neutral-50 p-3 rounded-lg border border-neutral-200/60">
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Type</span>
-                  <span className="font-bold text-neutral-900">Periodic Inspection</span>
-                </div>
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Inspector</span>
-                  <span className="font-medium text-neutral-900">Ahmad Subarjo</span>
-                </div>
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Recorded Odometer</span>
-                  <span className="font-mono font-medium text-neutral-900">82,421 KM</span>
-                </div>
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Result</span>
-                  <span className="font-bold text-emerald-700">PASSED (All Systems OK)</span>
-                </div>
-              </div>
-
-              {/* 4 Multi-Point Inspection Checklist Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
-                {/* Exterior */}
-                <div className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
-                  <div className="text-xs font-bold text-neutral-900 border-b pb-1">Exterior</div>
-                  <ul className="text-xs space-y-1.5 text-neutral-700">
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Body & Paint (No scratch)</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Windshield & Glass</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Tire Tread Depth</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Headlamp & Foglight</li>
-                  </ul>
-                </div>
-
-                {/* Interior */}
-                <div className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
-                  <div className="text-xs font-bold text-neutral-900 border-b pb-1">Interior</div>
-                  <ul className="text-xs space-y-1.5 text-neutral-700">
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Seat Leather & Rails</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> AC Cooling Temp</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Dashboard & Screen</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Interior Cleanliness</li>
-                  </ul>
-                </div>
-
-                {/* Engine */}
-                <div className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
-                  <div className="text-xs font-bold text-neutral-900 border-b pb-1">Engine & Powertrain</div>
-                  <ul className="text-xs space-y-1.5 text-neutral-700">
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Engine Oil Level</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Radiator Coolant</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> 12V / HV Battery</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Brake Fluid Level</li>
-                  </ul>
-                </div>
-
-                {/* Safety */}
-                <div className="p-3 rounded-lg border border-neutral-200 bg-white space-y-2">
-                  <div className="text-xs font-bold text-neutral-900 border-b pb-1">Safety & Emergency</div>
-                  <ul className="text-xs space-y-1.5 text-neutral-700">
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> All 7 Seatbelts</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Airbag Status OK</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Spare Tire & Jack</li>
-                    <li className="flex items-center gap-1.5 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> APAR (Fire Ext.)</li>
-                  </ul>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Tab 5: MAINTENANCE */}
-      {activeTab === "maintenance" && (
-        <div className="space-y-5">
-          {/* Service Indicator & Progress */}
-          <Card className="border-neutral-200">
-            <CardHeader className="pb-3 border-b border-neutral-100">
-              <CardTitle className="text-sm font-semibold">Service Schedule & Odometer Threshold</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-neutral-50 p-3 rounded-lg border border-neutral-200/60">
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Last Service</span>
-                  <span className="font-bold text-neutral-900">10 Aug 2026 (80,000 KM)</span>
-                </div>
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Current Odometer</span>
-                  <span className="font-mono font-bold text-neutral-900">{formatNumber(vehicle.odometer)} KM</span>
-                </div>
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Next Service Target</span>
-                  <span className="font-mono font-bold text-neutral-900">{formatNumber(nextServiceOdo)} KM</span>
-                </div>
-                <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Distance Remaining</span>
-                  <span className="font-mono font-bold text-emerald-700">{formatNumber(kmRemaining)} KM</span>
-                </div>
-              </div>
-
-              {/* Progress bar towards next service */}
-              <div className="space-y-1.5 pt-1">
-                <div className="flex justify-between text-xs font-medium">
-                  <span className="text-neutral-600">Maintenance Cycle Progress</span>
-                  <span className="font-mono text-neutral-900">{progressPercent}%</span>
-                </div>
-                <Progress value={progressPercent} className="h-2" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Maintenance History Table */}
-          <Card className="border-neutral-200">
-            <CardHeader className="pb-3 border-b border-neutral-100">
-              <CardTitle className="text-sm font-semibold">Workshop Service History</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12 text-center text-xs font-semibold uppercase tracking-wider">
-                      No
-                    </TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Odometer</TableHead>
-                    <TableHead>Workshop</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Cost</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vehicleMaintenance.map((m, idx) => (
-                    <TableRow key={m.id}>
-                      <TableCell className="text-center font-medium text-neutral-500 text-xs">
-                        {idx + 1}
+                      <TableCell className="text-xs">
+                        {r.startDate} s/d {r.endDate}
                       </TableCell>
-                      <TableCell className="font-mono text-neutral-600">{formatDate(m.date)}</TableCell>
-                      <TableCell className="font-semibold text-neutral-900">{m.type.replace(/_/g, " ")}</TableCell>
-                      <TableCell className="font-mono text-neutral-800">{formatNumber(m.odometer)} KM</TableCell>
-                      <TableCell className="text-neutral-800">{m.workshopName}</TableCell>
-                      <TableCell className="text-neutral-600 max-w-xs truncate">{m.description}</TableCell>
-                      <TableCell className="font-mono font-medium text-neutral-900">{formatRupiah(m.cost)}</TableCell>
-                      <TableCell><StatusBadge status={m.status} /></TableCell>
+                      <TableCell className="text-xs font-mono font-bold">
+                        {formatRupiah(r.totalAmount)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={r.status} />
+                      </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Tab 6: DOCUMENTS */}
-      {activeTab === "documents" && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {vehicleDocs.map((doc) => (
-              <Card key={doc.id} className="border-neutral-200">
-                <CardHeader className="pb-2 border-b border-neutral-100 flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-neutral-700" />
-                    <CardTitle className="text-sm font-semibold">{doc.documentType}</CardTitle>
-                  </div>
-                  <StatusBadge status={doc.status} />
-                </CardHeader>
-                <CardContent className="pt-3 space-y-2.5 text-xs">
-                  <div>
-                    <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Document Number</span>
-                    <span className="font-mono font-medium text-neutral-900">{doc.documentNumber}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-100">
-                    <div>
-                      <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Issued</span>
-                      <span className="text-neutral-800">{formatDate(doc.issuedDate)}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px] uppercase font-semibold">Expires</span>
-                      <span className="font-medium text-neutral-900">{formatDate(doc.expiryDate)}</span>
-                    </div>
-                  </div>
-                  {doc.notes && (
-                    <p className="text-[11px] text-neutral-500 bg-neutral-50 p-2 rounded border border-neutral-100">
-                      {doc.notes}
-                    </p>
-                  )}
-                  <div className="pt-2 flex justify-between items-center border-t border-neutral-100">
-                    <span className="text-neutral-400 text-[10px]">Renewal: {doc.costToRenew ? formatRupiah(doc.costToRenew) : "-"}</span>
-                    <Button variant="outline" size="xs">View Document</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 7: HISTORY */}
-      {activeTab === "history" && (
-        <Card className="border-neutral-200">
-          <CardHeader className="pb-3 border-b border-neutral-100">
-            <CardTitle className="text-sm font-semibold">Vehicle Lifecycle & Audit Trail</CardTitle>
-            <p className="text-xs text-neutral-500">Chronological history of dispatches, maintenance, inspections, and status changes</p>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="relative pl-6 border-l-2 border-neutral-200 space-y-8">
-              {vehicleHistoryEvents.map((evt) => (
-                <div key={evt.id} className="relative group">
-                  {/* Dot indicator */}
-                  <div className="absolute -left-[31px] top-1 h-3.5 w-3.5 rounded-full bg-white border-2 border-neutral-900 group-hover:scale-125 transition-transform" />
-
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-mono font-medium text-neutral-500">{evt.date}</span>
-                      {evt.tag && (
-                        <span className="px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-700 text-[10px] font-semibold uppercase">
-                          {evt.tag}
-                        </span>
-                      )}
-                      <h4 className="text-sm font-bold text-neutral-900">{evt.title}</h4>
-                    </div>
-                    <p className="text-xs text-neutral-600 leading-relaxed max-w-2xl">{evt.description}</p>
-                    <div className="text-[11px] text-neutral-400 flex items-center gap-3 pt-1">
-                      {evt.actor && <span>Operator / Vendor: {evt.actor}</span>}
-                      {evt.odometer && <span className="font-mono">{formatNumber(evt.odometer)} KM</span>}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
 
-      {/* Dialog: Log Inspection Modal */}
-      <Dialog open={isInspectionModalOpen} onOpenChange={setIsInspectionModalOpen}>
+      {/* TAB 3: ALLOCATION */}
+      {activeTab === "allocation" && (
+        <Card className="border-neutral-200 shadow-xs">
+          <CardHeader className="border-b border-neutral-100 p-4 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold text-neutral-900">
+                Daftar Alokasi Unit ({allocations.length})
+              </CardTitle>
+              <p className="text-xs text-neutral-500">
+                Alokasi unit terhubung dengan reservasi & rental dengan proteksi
+                benturan jadwal
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsAllocateModalOpen(true)}
+              className="text-xs font-semibold gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Alokasikan Unit
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nomor Alokasi</TableHead>
+                  <TableHead>Rentang Tanggal</TableHead>
+                  <TableHead>Reservasi / Rental</TableHead>
+                  <TableHead>Dialokasikan Oleh</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allocations.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="h-24 text-center text-xs text-neutral-500"
+                    >
+                      Tidak ada alokasi aktif untuk unit ini.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  allocations.map((a) => (
+                    <TableRow key={a.id}>
+                      <TableCell className="font-mono text-xs font-bold text-neutral-900">
+                        {a.allocationNumber}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {a.startAt} s/d {a.endAt}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-neutral-600">
+                        {a.reservationNumber ||
+                          a.reservationId ||
+                          a.rentalId ||
+                          "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-neutral-700">
+                        {a.allocatedBy}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            a.status === "ALLOCATED"
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              : "bg-neutral-100 text-neutral-600"
+                          }`}
+                        >
+                          {a.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {a.status === "ALLOCATED" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              const res = await releaseVehicleAllocationAction(
+                                a,
+                                vehicle,
+                                "Ops Dispatcher Budi",
+                              );
+                              if (res.success) {
+                                setActionNotice({
+                                  type: "success",
+                                  message: res.message,
+                                });
+                                loadVehicleData();
+                              }
+                            }}
+                            className="text-xs text-rose-600 hover:text-rose-800"
+                          >
+                            Lepas Alokasi
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 4: INSPECTION */}
+      {activeTab === "inspection" && (
+        <Card className="border-neutral-200 shadow-xs">
+          <CardHeader className="border-b border-neutral-100 p-4 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold text-neutral-900">
+                Histori Inspeksi Kondisi ({vehicleInspections.length})
+              </CardTitle>
+              <p className="text-xs text-neutral-500">
+                Pemeriksaan pra-rental, return, servis berkala, dan insiden
+              </p>
+            </div>
+            <Link href="/operations/inspections/new">
+              <Button size="sm" className="text-xs font-semibold gap-1.5">
+                <Plus className="h-3.5 w-3.5" />+ Buat Inspeksi Baru
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Tipe</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>Inspector</TableHead>
+                  <TableHead>Odometer</TableHead>
+                  <TableHead>Hasil</TableHead>
+                  <TableHead>Catatan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {vehicleInspections.map((i) => (
+                  <TableRow key={i.id}>
+                    <TableCell className="font-mono text-xs font-bold">
+                      {i.id}
+                    </TableCell>
+                    <TableCell>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-neutral-100 text-neutral-800">
+                        {i.type}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs">{i.date}</TableCell>
+                    <TableCell className="text-xs font-medium">
+                      {i.inspectorName}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {formatNumber(i.odometer)} KM
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          i.result === "PASSED"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-rose-50 text-rose-700 border border-rose-200"
+                        }`}
+                      >
+                        {i.result}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs text-neutral-500 max-w-xs truncate">
+                      {i.notes || "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 5: DAMAGE MANAGEMENT */}
+      {activeTab === "damage" && (
+        <Card className="border-neutral-200 shadow-xs">
+          <CardHeader className="border-b border-neutral-100 p-4 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold text-neutral-900">
+                Buku Besar Kerusakan Kendaraan (Vehicle Damages)
+              </CardTitle>
+              <p className="text-xs text-neutral-500">
+                Pelacakan cacat fisik, estimasi biaya, dan status tagihan per 10
+                area komponen
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsAddDamageModalOpen(true)}
+              className="text-xs font-semibold gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />+ Catat Kerusakan Baru
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nomor Kerusakan</TableHead>
+                  <TableHead>Area Komponen</TableHead>
+                  <TableHead>Deskripsi Kerusakan</TableHead>
+                  <TableHead>Keparahan</TableHead>
+                  <TableHead>Estimasi Biaya</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Tanggal Lapor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {damages.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="h-24 text-center text-xs text-neutral-500"
+                    >
+                      Tidak ada catatan kerusakan pada kendaraan ini (Kondisi
+                      bersih).
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  damages.map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell className="font-mono text-xs font-bold text-neutral-900">
+                        {d.damageNumber || d.id}
+                      </TableCell>
+                      <TableCell>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-neutral-100 text-neutral-800">
+                          {d.area}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-neutral-800">
+                        {d.description}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            d.severity === "NORMAL"
+                              ? "bg-neutral-100 text-neutral-600"
+                              : d.severity === "MINOR"
+                                ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                : d.severity === "MAJOR"
+                                  ? "bg-orange-50 text-orange-800 border border-orange-200"
+                                  : "bg-rose-50 text-rose-800 border border-rose-200"
+                          }`}
+                        >
+                          {d.severity}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs font-mono font-bold">
+                        {formatRupiah(d.estimatedCost)}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            d.status === "CHARGED" || d.status === "REPAIRED"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-amber-50 text-amber-800 border border-amber-200"
+                          }`}
+                        >
+                          {d.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs text-neutral-500">
+                        {d.reportedAt ? formatDate(d.reportedAt) : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 6: MAINTENANCE */}
+      {activeTab === "maintenance" && (
+        <Card className="border-neutral-200 shadow-xs">
+          <CardHeader className="border-b border-neutral-100 p-4 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-sm font-bold text-neutral-900">
+                Log Servis & Bengkel ({vehicleMaintenance.length})
+              </CardTitle>
+              <p className="text-xs text-neutral-500">
+                Pekerjaan bengkel berkala, penggantian suku cadang, dan gerbang
+                Quality Control (QC)
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsMaintenanceModalOpen(true)}
+              className="text-xs font-semibold gap-1.5"
+            >
+              <Wrench className="h-3.5 w-3.5" />+ Kirim ke Bengkel
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Record ID</TableHead>
+                  <TableHead>Tipe Servis</TableHead>
+                  <TableHead>Bengkel Rekanan</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>Odometer</TableHead>
+                  <TableHead>Total Biaya</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {vehicleMaintenance.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-mono text-xs font-bold">
+                      {m.id}
+                    </TableCell>
+                    <TableCell className="text-xs font-medium text-neutral-800">
+                      {m.type.replace(/_/g, " ")}
+                    </TableCell>
+                    <TableCell className="text-xs text-neutral-700">
+                      {m.workshopName}
+                    </TableCell>
+                    <TableCell className="text-xs">{m.date}</TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {formatNumber(m.odometer)} KM
+                    </TableCell>
+                    <TableCell className="text-xs font-mono font-bold">
+                      {formatRupiah(m.cost)}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          m.status === "COMPLETED"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : m.status === "IN_PROGRESS"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-amber-50 text-amber-800 border border-amber-200"
+                        }`}
+                      >
+                        {m.status}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 7: DOCUMENTS */}
+      {activeTab === "documents" && (
+        <Card className="border-neutral-200 shadow-xs">
+          <CardHeader className="border-b border-neutral-100 p-4">
+            <CardTitle className="text-sm font-bold text-neutral-900">
+              Dokumen Legal & Kepatuhan ({documents.length})
+            </CardTitle>
+            <p className="text-xs text-neutral-500">
+              Masa berlaku STNK, KIR, BPKB, dan Polis Asuransi terhitung secara
+              otomatis
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tipe Dokumen</TableHead>
+                  <TableHead>Nomor Registrasi</TableHead>
+                  <TableHead>Tanggal Terbit</TableHead>
+                  <TableHead>Tanggal Kadaluarsa</TableHead>
+                  <TableHead>Sisa Masa Berlaku</TableHead>
+                  <TableHead>Status Kepatuhan</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {documents.map((doc) => {
+                  const alert = calculateDocumentAlert(doc.expiryDate);
+                  return (
+                    <TableRow key={doc.id}>
+                      <TableCell className="font-bold text-xs text-neutral-900">
+                        {doc.documentType}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {doc.documentNumber}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {doc.issuedDate || doc.issueDate}
+                      </TableCell>
+                      <TableCell className="text-xs font-semibold">
+                        {doc.expiryDate}
+                      </TableCell>
+                      <TableCell className="text-xs text-neutral-600">
+                        {alert.alertMessage}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            alert.alertStatus === "VALID"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : alert.alertStatus === "EXPIRING_SOON"
+                                ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                          }`}
+                        >
+                          {alert.alertStatus.replace(/_/g, " ")}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 8: GPS & ADVANCED TELEMATICS */}
+      {activeTab === "gps" && <VehicleTelematicsTab vehicle={vehicle} />}
+
+      {/* TAB 9: TIMELINE */}
+      {activeTab === "timeline" && (
+        <div className="space-y-4">
+          <ActivityTimelineCard
+            entityType="VEHICLE"
+            entityId={vehicle.id}
+            title={`Audit & Operational Timeline — ${vehicle.plateNumber}`}
+          />
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* OPERATIONAL ACTION MODALS (Section 26)                                     */}
+      {/* ========================================================================= */}
+
+      {/* 1. Modal Alokasi Unit */}
+      <Dialog open={isAllocateModalOpen} onOpenChange={setIsAllocateModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Log Vehicle Inspection</DialogTitle>
-            <DialogDescription>
-              Record periodic, pre-rental, or post-rental inspection for unit {vehicle.plateNumber}.
+            <DialogTitle className="text-base font-bold">
+              Alokasikan Kendaraan
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Alokasikan unit {vehicle.plateNumber} ({vehicle.brand}{" "}
+              {vehicle.model}) untuk jadwal operasional.
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-3 py-2 text-xs">
+            <ActionBlockerBanner
+              blocker={availability.blockerReasons as any}
+              actionTitle="Alokasi Unit"
+            />
+
             <div>
-              <label className="text-[11px] font-semibold text-neutral-600 block mb-1">Inspection Type</label>
-              <select className="w-full h-8 rounded border border-neutral-200 px-2 text-xs bg-white">
-                <option>Periodic Inspection</option>
-                <option>Pre-Rental Dispatch Check</option>
-                <option>Post-Rental Return Inspection</option>
-              </select>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Tanggal Mulai
+              </label>
+              <Input
+                type="date"
+                value={allocStart}
+                onChange={(e) => setAllocStart(e.target.value)}
+                className="text-xs"
+              />
             </div>
+
             <div>
-              <label className="text-[11px] font-semibold text-neutral-600 block mb-1">Current Odometer (KM)</label>
-              <input type="number" defaultValue={vehicle.odometer} className="w-full h-8 rounded border border-neutral-200 px-2 text-xs" />
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Tanggal Selesai
+              </label>
+              <Input
+                type="date"
+                value={allocEnd}
+                onChange={(e) => setAllocEnd(e.target.value)}
+                className="text-xs"
+              />
             </div>
+
             <div>
-              <label className="text-[11px] font-semibold text-neutral-600 block mb-1">Inspector Name</label>
-              <input defaultValue="Ahmad Subarjo" className="w-full h-8 rounded border border-neutral-200 px-2 text-xs" />
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Petugas Alokasi
+              </label>
+              <Input
+                value={allocOperator}
+                onChange={(e) => setAllocOperator(e.target.value)}
+                className="text-xs"
+              />
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsInspectionModalOpen(false)}>Cancel</Button>
-            <Button size="sm" onClick={() => setIsInspectionModalOpen(false)}>Save Inspection Record</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAllocateModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={!availability.isAvailable}
+              onClick={handleAllocate}
+              className="text-xs font-semibold"
+            >
+              Konfirmasi Alokasi
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Book Service Modal */}
-      <Dialog open={isMaintenanceModalOpen} onOpenChange={setIsMaintenanceModalOpen}>
+      {/* 2. Modal Serah Terima (Handover) */}
+      <Dialog open={isHandoverModalOpen} onOpenChange={setIsHandoverModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Book Workshop Service</DialogTitle>
-            <DialogDescription>
-              Dispatch unit {vehicle.plateNumber} to partner workshop.
+            <DialogTitle className="text-base font-bold">
+              Serah Terima Kendaraan (Handover)
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Serah terima fisik unit {vehicle.plateNumber} kepada penyewa untuk
+              memulai rental aktif.
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-3 py-2 text-xs">
+            <ActionBlockerBanner
+              blocker={handoverEligibility.blockerReasons as any}
+              actionTitle="Serah Terima Unit"
+            />
+
             <div>
-              <label className="text-[11px] font-semibold text-neutral-600 block mb-1">Service Type</label>
-              <select className="w-full h-8 rounded border border-neutral-200 px-2 text-xs bg-white">
-                <option>Periodic Service (Oil & Filters)</option>
-                <option>Brake & Suspension Overhaul</option>
-                <option>Air Conditioning Overhaul</option>
-                <option>Body Repair & Paint</option>
-              </select>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Lokasi Serah Terima
+              </label>
+              <Input
+                value={handoverLocation}
+                onChange={(e) => setHandoverLocation(e.target.value)}
+                className="text-xs"
+              />
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-neutral-600 block mb-1">Partner Workshop</label>
-              <select className="w-full h-8 rounded border border-neutral-200 px-2 text-xs bg-white">
-                <option>AutoCare Pulogadung (Jakarta Timur)</option>
-                <option>Plaza Toyota Kebon Jeruk (Jakarta Barat)</option>
-                <option>Auto2000 Cikarang (Bekasi)</option>
-                <option>Bengkel Sentosa Daan Mogot (Tangerang)</option>
-              </select>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                  Odometer Awal (KM)
+                </label>
+                <Input
+                  type="number"
+                  value={handoverOdometer}
+                  onChange={(e) => setHandoverOdometer(Number(e.target.value))}
+                  className="text-xs font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                  BBM Awal (%)
+                </label>
+                <Input
+                  type="number"
+                  value={handoverFuel}
+                  onChange={(e) => setHandoverFuel(Number(e.target.value))}
+                  className="text-xs font-mono"
+                />
+              </div>
             </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsMaintenanceModalOpen(false)}>Cancel</Button>
-            <Button size="sm" onClick={() => setIsMaintenanceModalOpen(false)}>Confirm Dispatch to Workshop</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsHandoverModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={!handoverEligibility.canPerform}
+              onClick={handleHandover}
+              className="text-xs font-semibold"
+            >
+              Konfirmasi Handover & Aktivasi Rental
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 3. Modal Terima Pengembalian (Return) */}
+      <Dialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              Terima Pengembalian Unit
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Catat pengembalian unit {vehicle.plateNumber}. Status unit akan
+              berpindah ke INSPECTION.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Odometer Pengembalian (KM)
+              </label>
+              <Input
+                type="number"
+                value={returnOdometer}
+                onChange={(e) => setReturnOdometer(Number(e.target.value))}
+                className="text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Catatan Pengembalian
+              </label>
+              <Input
+                value={returnNotes}
+                onChange={(e) => setReturnNotes(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsReturnModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleReturn}
+              className="text-xs font-semibold"
+            >
+              Proses Pengembalian (Masuk Inspeksi)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 4. Modal Kirim ke Bengkel (Maintenance) */}
+      <Dialog
+        open={isMaintenanceModalOpen}
+        onOpenChange={setIsMaintenanceModalOpen}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              Kirim Unit ke Bengkel
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Kirim unit {vehicle.plateNumber} ke bengkel rekanan untuk servis
+              atau perbaikan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Nama Bengkel / Workshop
+              </label>
+              <Input
+                value={mntWorkshop}
+                onChange={(e) => setMntWorkshop(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Jenis Servis
+              </label>
+              <Input
+                value={mntType}
+                onChange={(e) => setMntType(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Deskripsi Pekerjaan
+              </label>
+              <Input
+                value={mntDesc}
+                onChange={(e) => setMntDesc(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsMaintenanceModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSendMaintenance}
+              className="text-xs font-semibold"
+            >
+              Kirim ke Bengkel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 5. Modal Selesaikan Servis */}
+      <Dialog
+        open={isCompleteMntModalOpen}
+        onOpenChange={setIsCompleteMntModalOpen}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              Selesaikan Servis Bengkel
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Konfirmasi penyelesaian pekerjaan servis untuk{" "}
+              {vehicle.plateNumber}. Unit akan masuk ke antrean Quality Control
+              (QC_PENDING).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="p-3 rounded-lg bg-neutral-100 border border-neutral-200">
+              <span className="font-bold text-neutral-900 block mb-1">
+                Item Pekerjaan & Biaya
+              </span>
+              <ul className="text-[11px] text-neutral-600 space-y-1">
+                <li>• Oli Mesin 0W-20 (4L): Rp 660.000</li>
+                <li>• Jasa Servis & Tune Up: Rp 350.000</li>
+                <li className="font-bold text-neutral-900 pt-1 border-t border-neutral-300">
+                  Total Servis: Rp 1.010.000
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCompleteMntModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCompleteMaintenance}
+              className="text-xs font-semibold"
+            >
+              Konfirmasi Selesai Servis (Masuk QC)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 6. Modal QC Keluar (Pass / Fail) */}
+      <Dialog open={isQCModalOpen} onOpenChange={setIsQCModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              Quality Control (QC) Pasca-Servis
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Verifikasi keselamatan dan kelayakan unit {vehicle.plateNumber}{" "}
+              sebelum kembali disewakan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <p className="text-neutral-600">
+              QC Lead memeriksa kelayakan mekanikal, sistem rem, lampu, dan uji
+              jalan.
+            </p>
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-950">
+              <span className="font-bold block mb-1">Aturan Bisnis:</span>
+              <ul className="space-y-1 text-[11px]">
+                <li>
+                  • <strong>PASS:</strong> Unit langsung berstatus{" "}
+                  <code>AVAILABLE</code> dan jadwal servis berikutnya di-reset.
+                </li>
+                <li>
+                  • <strong>FAIL:</strong> Unit dikembalikan ke antrean bengkel
+                  (<code>MAINTENANCE</code>).
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleQC("FAIL")}
+              className="text-xs font-semibold text-rose-700 border-rose-300 hover:bg-rose-50"
+            >
+              QC GAGAL (Rework)
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => handleQC("PASS")}
+              className="text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white"
+            >
+              QC LULUS (AVAILABLE)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 7. Modal Catat Kerusakan Baru */}
+      <Dialog
+        open={isAddDamageModalOpen}
+        onOpenChange={setIsAddDamageModalOpen}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              Catat Kerusakan Kendaraan
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Tambahkan catatan cacat kondisi fisik unit {vehicle.plateNumber}{" "}
+              ke buku besar kerusakan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Area Komponen (10 Area)
+              </label>
+              <select
+                value={damageArea}
+                onChange={(e) => setDamageArea(e.target.value as any)}
+                className="w-full h-8 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
+              >
+                <option value="BODY">BODY (Bemper, Pintu, Fender)</option>
+                <option value="GLASS">GLASS (Kaca Depan, Spion)</option>
+                <option value="LIGHTS">LIGHTS (Headlamp, Stoplamp)</option>
+                <option value="TIRES">TIRES (Ban, Velg)</option>
+                <option value="ENGINE">ENGINE (Mesin, Transmisi)</option>
+                <option value="INTERIOR">INTERIOR (Jok, Dashboard)</option>
+                <option value="ELECTRICAL">ELECTRICAL (Audio, Tombol)</option>
+                <option value="AC">AC (Sistem Pendingin)</option>
+                <option value="SAFETY">SAFETY (APAR, Sabuk Pengaman)</option>
+                <option value="OTHER">OTHER (Kunci, Toolkit)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Tingkat Keparahan (Severity)
+              </label>
+              <select
+                value={damageSeverity}
+                onChange={(e) => setDamageSeverity(e.target.value as any)}
+                className="w-full h-8 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
+              >
+                <option value="MINOR">MINOR (Baret ringan, lecet)</option>
+                <option value="MAJOR">MAJOR (Penyok, retak besar)</option>
+                <option value="CRITICAL">
+                  CRITICAL (Membahayakan operasional)
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Estimasi Biaya Perbaikan (Rp)
+              </label>
+              <Input
+                type="number"
+                value={damageCost}
+                onChange={(e) => setDamageCost(Number(e.target.value))}
+                className="text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-neutral-700 block mb-1">
+                Deskripsi Kerusakan
+              </label>
+              <Input
+                placeholder="Contoh: Baret pada sudut bemper belakang kanan..."
+                value={damageDesc}
+                onChange={(e) => setDamageDesc(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddDamageModalOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={!damageDesc}
+              onClick={handleAddDamage}
+              className="text-xs font-semibold"
+            >
+              Simpan Kerusakan
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

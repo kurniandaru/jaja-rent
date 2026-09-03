@@ -1,4 +1,4 @@
-import { Vehicle } from "../types/fleet";
+import type { Vehicle } from "../types/fleet.ts";
 
 export const mockVehicles: Vehicle[] = [
   {
